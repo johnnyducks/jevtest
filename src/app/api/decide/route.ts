@@ -1,0 +1,35 @@
+import { JevError } from "@/lib/jev/client";
+import { decide } from "@/lib/decision/engine";
+import { errorResponse, parseHistory, parseMessage, parseMode, readJson } from "@/lib/http";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const STATUS: Record<string, number> = {
+  not_configured: 503,
+  unauthorized: 502,
+  validation: 502,
+  rate_limited: 429,
+  overloaded: 503,
+  timeout: 504,
+};
+
+export async function POST(req: Request) {
+  const body = await readJson(req);
+  const message = parseMessage(body?.message);
+  const mode = parseMode(body?.mode);
+  if (!message) return errorResponse(400, "bad_request", "Message must be 1–4000 characters.");
+  if (!mode) return errorResponse(400, "bad_request", 'Mode must be "demo" or "live".');
+
+  try {
+    const result = await decide(message, mode, parseHistory(body?.history));
+    return Response.json(result, { headers: { "Cache-Control": "no-store" } });
+  } catch (err) {
+    if (err instanceof JevError) {
+      // Validation detail from Jev describes our request, not secrets; safe to surface.
+      return errorResponse(STATUS[err.code] ?? 502, err.code, err.message, err.retryable || err.code === "network", err.code === "validation" ? err.detail : undefined);
+    }
+    console.error("decide failed", err);
+    return errorResponse(500, "internal", "Decision engine failed unexpectedly.", true);
+  }
+}
