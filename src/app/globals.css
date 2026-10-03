@@ -3044,3 +3044,39 @@ pre.code {
     display: none;
   }
 }
+
+/* Baseball commentary */
+.msg-text.after.fact {
+  color: var(--text);
+  padding-top: 6px;
+  border-top: 1px dashed var(--line-2);
+}
+
+.typing.after {
+  display: inline-flex;
+  margin-top: 6px;
+}
+
+.msg-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.msg-sources::before {
+  content: "source";
+  color: var(--dim);
+}
+
+.msg-sources a {
+  color: var(--muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.msg-sources a:hover {
+  color: var(--accent);
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { postJson } from "@/lib/api";
 import type { DecisionResult } from "@/lib/decision/contracts";
 import { DEFAULT_WORLD } from "@/lib/marty/world";
@@ -9,11 +9,11 @@ import { ENVIRONMENT } from "@/lib/twin/environment";
 import { makeTransform } from "@/lib/twin/geometry";
 import { buildGrid } from "@/lib/twin/grid";
 import { SimulatedMotion } from "@/lib/twin/motion";
-import { builtInReply, outcomeOf } from "@/lib/voice/lines";
+import { ChatDirector, type ReplyPayload } from "@/lib/voice/director";
 import { Gear, Help, Send } from "../icons";
 import Popover from "../Popover";
 import TwinMap from "./TwinMap";
-import ChatLog, { type Reply } from "./ChatLog";
+import ChatLog from "./ChatLog";
 import { MapHud } from "./TwinPanel";
 
 const GRID = buildGrid(ENVIRONMENT);
@@ -24,7 +24,7 @@ const VIEW = makeTransform(ENVIRONMENT.width, ENVIRONMENT.height);
  * Requests go to /api/decide with a twin context so Jev chooses among navigation actions.
  */
 export default function TwinView() {
-  const [{ motion, ctl }] = useState(() => {
+  const [{ motion, ctl, director }] = useState(() => {
     const motion = new SimulatedMotion(ENVIRONMENT.defaultPose);
     const ctl = new TwinController({
       env: ENVIRONMENT,
@@ -32,7 +32,14 @@ export default function TwinView() {
       motion,
       decide: ({ message, twin }) => postJson<DecisionResult>("/api/decide", { message, world: DEFAULT_WORLD, twin }),
     });
-    return { motion, ctl };
+    // Marty's chat lines (replies, follow-ups, baseball commentary) are driven by mission changes.
+    const director = new ChatDirector({
+      ctl,
+      request: (body) => postJson<ReplyPayload>("/api/reply", body),
+      cardNames: ENVIRONMENT.cards.map((c) => c.name),
+      cardPlayer: Object.fromEntries(ENVIRONMENT.cards.map((c) => [c.id, c.player.lahmanId])),
+    });
+    return { motion, ctl, director };
   });
 
   const state = useSyncExternalStore(ctl.subscribe, ctl.getState, ctl.getState);
@@ -40,8 +47,7 @@ export default function TwinView() {
   const [draft, setDraft] = useState("");
   const [speed, setSpeed] = useState(motion.getSpeed());
   const [showClearance, setShowClearance] = useState(true);
-  const [replies, setReplies] = useState<Record<string, Reply>>({});
-  const requested = useRef(new Set<string>());
+  const chat = useSyncExternalStore(director.subscribe, director.getState, director.getState);
 
   useEffect(() => () => motion.stop(), [motion]);
   useEffect(() => {
@@ -50,34 +56,6 @@ export default function TwinView() {
     return () => clearTimeout(t);
   }, [state.notice, ctl]);
 
-  // Ask for Marty's reply once a mission has something to report.
-  useEffect(() => {
-    if (state.missions.length === 0 && requested.current.size) {
-      requested.current.clear();
-      setReplies({});
-      return;
-    }
-    for (const m of state.missions) {
-      const outcome = outcomeOf(m);
-      if (!outcome || requested.current.has(m.id)) continue;
-      requested.current.add(m.id);
-      setReplies((r) => ({ ...r, [m.id]: { state: "pending", at: outcome.status } }));
-      const history = state.missions
-        .filter((x) => x.seq < m.seq && replies[x.id]?.text)
-        .slice(-5)
-        .flatMap((x) => [
-          { role: "user" as const, text: x.request },
-          { role: "assistant" as const, text: replies[x.id].text! },
-        ]);
-      type ReplyBody = { text: string; source: "openai" | "built-in"; model?: string };
-      postJson<ReplyBody>("/api/reply", { outcome, history })
-        .catch((): ReplyBody => ({ text: builtInReply(outcome, ENVIRONMENT.cards.map((c) => c.name)), source: "built-in" }))
-        .then((res) => {
-          if (!requested.current.has(m.id)) return; // reset in the meantime
-          setReplies((r) => ({ ...r, [m.id]: { state: "done", at: outcome.status, text: res.text, source: res.source, model: res.model } }));
-        });
-    }
-  }, [state.missions, replies]);
 
   const onMap = state.missions.find((m) => m.id === state.activeId);
   const canResume = onMap?.status === "stopped";
@@ -165,7 +143,7 @@ export default function TwinView() {
       </section>
 
       <aside className="twin-chat" aria-label="Chat with Marty">
-        <ChatLog missions={state.missions} replies={replies} onClarify={(id) => ctl.chooseClarification(id)} onRetry={(t) => send(t)} />
+        <ChatLog missions={state.missions} entries={chat.entries} onClarify={(id) => ctl.chooseClarification(id)} onRetry={(t) => send(t)} />
         <form
           className="composer twin-composer"
           onSubmit={(e) => {

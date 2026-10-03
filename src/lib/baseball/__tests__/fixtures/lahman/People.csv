@@ -1,0 +1,9 @@
+playerID,birthYear,birthMonth,birthDay,birthCountry,birthState,birthCity,deathYear,deathMonth,deathDay,deathCountry,deathState,deathCity,nameFirst,nameLast,nameGiven,weight,height,bats,throws,debut,finalGame,retroID,bbrefID
+belleal01,1966,8,25,USA,LA,Shreveport,,,,,,,Albert,Belle,Albert Jojuan,190,73,R,R,1989-07-15,2000-10-01,bellj002,belleal01
+bondsba01,1964,7,24,USA,CA,Riverside,,,,,,,Barry,Bonds,Barry Lamar,185,73,L,L,1986-05-30,2007-09-26,bondb001,bondsba01
+bondsbo01,1946,3,15,USA,CA,Riverside,2003,8,23,USA,CA,San Carlos,Bobby,Bonds,Bobby Lee,190,73,R,R,1968-06-25,1981-10-04,bondb101,bondsbo01
+cansejo01,1964,7,2,Cuba,La Habana,La Habana,,,,,,,Jose,Canseco,Jose,240,76,R,R,1985-09-02,2001-10-06,cansj001,cansejo01
+griffke01,1950,4,10,USA,PA,Donora,,,,,,,Ken,Griffey,George Kenneth,190,71,L,L,1973-08-25,1991-05-31,grifk001,griffke01
+griffke02,1969,11,21,USA,PA,Donora,,,,,,,Ken,Griffey,George Kenneth,195,75,L,L,1989-04-03,2010-05-31,grifk002,griffke02
+suzukic01,1973,10,22,Japan,Aichi,Nichi Kasugai-gun,,,,,,,Ichiro,Suzuki,Ichiro,175,71,L,R,2001-04-02,2019-03-21,suzui001,suzukic01
+thomafr04,1968,5,27,USA,GA,Columbus,,,,,,,Frank,Thomas,Frank Edward,240,77,R,R,1990-08-02,2008-08-29,thomf001,thomafr04

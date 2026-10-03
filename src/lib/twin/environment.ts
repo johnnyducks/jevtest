@@ -27,6 +27,29 @@ export interface Obstacle {
   h: number;
 }
 
+/** Link from a card to baseball knowledge records. Several cards of one player share these. */
+export interface CardPlayer {
+  /** Canonical Lahman playerID (verified against People.csv by the importer). */
+  lahmanId: string;
+  /** Exact English Wikipedia article title, used for supplemental facts only. */
+  wikipediaTitle: string;
+}
+
+/**
+ * What is known about the physical card. Fields are null when unknown, never guessed.
+ * Issue year (when the card was printed) is distinct from the season it depicts.
+ */
+export interface CardMeta {
+  manufacturer: string | null;
+  set: string | null;
+  issueYear: number;
+  teamShown: string;
+  /** Season pictured / represented, when known. Null = not recorded in the catalog. */
+  seasonRepresented: number | null;
+  /** How this card was identified. Catalog entries are curated, not recognized from images. */
+  identification: "catalog";
+}
+
 export interface Card {
   /** Stable entity ID, used internally everywhere. */
   id: string;
@@ -41,6 +64,8 @@ export interface Card {
   facing: Vec;
   /** Point in free space where Marty stops to view the card. */
   approach: Vec;
+  player: CardPlayer;
+  meta: CardMeta;
   note?: string;
 }
 
@@ -74,11 +99,15 @@ function card(
   team: string,
   position: Vec,
   facing: Vec,
+  player: CardPlayer,
+  meta: { manufacturer: string | null; set: string | null },
   note?: string,
 ): Card {
   return {
     id,
     name,
+    player,
+    meta: { ...meta, issueYear: year, teamShown: team, seasonRepresented: null, identification: "catalog" },
     aliases: [...new Set([name.toLowerCase(), ...aliases])],
     year,
     team,
@@ -116,16 +145,16 @@ export const ENVIRONMENT: Environment = {
     { id: "vault-s", label: "Vault cage", kind: "cage", x: 10.4, y: 6.2, w: 1.6, h: 0.15 },
   ],
   cards: [
-    card("griffey-89", "Ken Griffey Jr.", ["griffey", "ken griffey", "griffey jr", "junior", "the kid"], 1989, "Mariners", { x: 12, y: 5.2 }, WEST),
-    card("henderson-80", "Rickey Henderson", ["rickey", "henderson", "rickey henderson"], 1980, "Athletics", { x: 3.0, y: 8 }, SOUTH),
-    card("bobby-bonds-69", "Bobby Bonds", ["bonds", "bobby", "bobby bonds"], 1969, "Giants", { x: 4.4, y: 3.2 }, SOUTH),
-    card("barry-bonds-87", "Barry Bonds", ["bonds", "barry", "barry bonds"], 1987, "Pirates", { x: 5.6, y: 4.8 }, NORTH),
-    card("ripken-82", "Cal Ripken Jr.", ["ripken", "cal ripken", "cal", "iron man"], 1982, "Orioles", { x: 0, y: 4.5 }, EAST),
-    card("aaron-54", "Hank Aaron", ["aaron", "hank", "hank aaron", "hammerin hank"], 1954, "Braves", { x: 8.0, y: 6.0 }, WEST),
-    card("robinson-52", "Jackie Robinson", ["jackie", "robinson", "jackie robinson"], 1952, "Dodgers", { x: 3.5, y: 0.5 }, NORTH),
-    card("ichiro-01", "Ichiro Suzuki", ["ichiro", "suzuki", "ichiro suzuki"], 2001, "Mariners", { x: 8.2, y: 5.0 }, EAST),
-    card("mantle-52", "Mickey Mantle", ["mantle", "mickey", "mickey mantle", "the mick"], 1952, "Yankees", { x: 6.2, y: 6.8 }, EAST),
-    card("wagner-t206", "Honus Wagner", ["wagner", "honus", "honus wagner", "t206"], 1909, "Pirates", { x: 11.2, y: 8 }, SOUTH, "Locked inside the vault cage. No opening, so it is unreachable by design."),
+    card("griffey-89", "Ken Griffey Jr.", ["griffey", "ken griffey", "griffey jr", "junior", "the kid"], 1989, "Mariners", { x: 12, y: 5.2 }, WEST, { lahmanId: "griffke02", wikipediaTitle: "Ken Griffey Jr." }, { manufacturer: "Upper Deck", set: "1989 Upper Deck" }),
+    card("henderson-80", "Rickey Henderson", ["rickey", "henderson", "rickey henderson"], 1980, "Athletics", { x: 3.0, y: 8 }, SOUTH, { lahmanId: "henderi01", wikipediaTitle: "Rickey Henderson" }, { manufacturer: "Topps", set: "1980 Topps" }),
+    card("bobby-bonds-69", "Bobby Bonds", ["bonds", "bobby", "bobby bonds"], 1969, "Giants", { x: 4.4, y: 3.2 }, SOUTH, { lahmanId: "bondsbo01", wikipediaTitle: "Bobby Bonds" }, { manufacturer: "Topps", set: "1969 Topps" }),
+    card("barry-bonds-87", "Barry Bonds", ["bonds", "barry", "barry bonds"], 1987, "Pirates", { x: 5.6, y: 4.8 }, NORTH, { lahmanId: "bondsba01", wikipediaTitle: "Barry Bonds" }, { manufacturer: "Topps", set: "1987 Topps" }),
+    card("ripken-82", "Cal Ripken Jr.", ["ripken", "cal ripken", "cal", "iron man"], 1982, "Orioles", { x: 0, y: 4.5 }, EAST, { lahmanId: "ripkeca01", wikipediaTitle: "Cal Ripken Jr." }, { manufacturer: "Topps", set: "1982 Topps Traded" }),
+    card("aaron-54", "Hank Aaron", ["aaron", "hank", "hank aaron", "hammerin hank"], 1954, "Braves", { x: 8.0, y: 6.0 }, WEST, { lahmanId: "aaronha01", wikipediaTitle: "Hank Aaron" }, { manufacturer: "Topps", set: "1954 Topps" }),
+    card("robinson-52", "Jackie Robinson", ["jackie", "robinson", "jackie robinson"], 1952, "Dodgers", { x: 3.5, y: 0.5 }, NORTH, { lahmanId: "robinja02", wikipediaTitle: "Jackie Robinson" }, { manufacturer: "Topps", set: "1952 Topps" }),
+    card("ichiro-01", "Ichiro Suzuki", ["ichiro", "suzuki", "ichiro suzuki"], 2001, "Mariners", { x: 8.2, y: 5.0 }, EAST, { lahmanId: "suzukic01", wikipediaTitle: "Ichiro Suzuki" }, { manufacturer: null, set: null }),
+    card("mantle-52", "Mickey Mantle", ["mantle", "mickey", "mickey mantle", "the mick"], 1952, "Yankees", { x: 6.2, y: 6.8 }, EAST, { lahmanId: "mantlmi01", wikipediaTitle: "Mickey Mantle" }, { manufacturer: "Topps", set: "1952 Topps" }),
+    card("wagner-t206", "Honus Wagner", ["wagner", "honus", "honus wagner", "t206"], 1909, "Pirates", { x: 11.2, y: 8 }, SOUTH, { lahmanId: "wagneho01", wikipediaTitle: "Honus Wagner" }, { manufacturer: "American Tobacco Company", set: "T206" }, "Locked inside the vault cage. No opening, so it is unreachable by design."),
   ],
 };
 

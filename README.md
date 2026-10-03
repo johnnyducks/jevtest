@@ -21,6 +21,8 @@ Requires Node 20.9+. A Jev API key is required; without one, every request shows
 | `JEV_API_BASE` | no | `https://api.typesafe.ai` | Override for a proxy |
 | `OPENAI_API_KEY` | no | — | Marty's chat replies, written in character (built-in lines otherwise) |
 | `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's replies |
+| `WIKIPEDIA_ENABLED` | no | `true` | Set to `false` to use Lahman data only |
+| `WIKIPEDIA_USER_AGENT` | no | `MartyLive/0.1 (…)` | User-Agent sent to the Wikipedia API (Wikimedia asks for contact details) |
 
 Keys are read only in server code (`src/lib/jev/client.ts`, `src/lib/voice/openai.ts`) and never reach the browser. The bot icon in the header shows which model is in use and whether it is configured.
 
@@ -84,6 +86,63 @@ The room is 12 m × 8 m, with the origin at the bottom-left and +y pointing nort
 
 The map and panel read Marty's state only through the `PoseSource` interface in `lib/twin/motion.ts`. `SimulatedMotion` is the only implementation. A real Scout telemetry adapter could implement the same interface later without changes to the renderer or the panel. No hardware integration exists in this prototype.
 
+## Baseball knowledge
+
+Marty knows baseball. Ask about a player ("What did Rickey Henderson do in 1982?", "Who was Nolan Ryan?") and he answers from real data. He also volunteers facts on his own:
+- **heading to a card:** one fact, woven into the reply;
+- **arriving at a card:** a fresh observation, unless he already shared one on this trip;
+- **revisiting a card:** after a quiet period, a *different* fact.
+
+Each fact Marty uses shows its source under the message.
+
+### How it works
+
+| Layer | What it does | Where |
+| --- | --- | --- |
+| Data | Lahman CSVs imported into one JSON store: full season detail (with league ranks and team seasons) for the card players, plus a compact career record for every player | `scripts/import-lahman.ts` → `data/baseball/knowledge.json` |
+| Knowledge service | Deterministic lookups: profile, season, career, team season, all-time ranks, teammates. Returns structured facts, each with source, dataset version and verification status | `src/lib/baseball/store.ts`, `facts.ts`, `service.ts` |
+| Player resolution | Card aliases plus full names across all ~20,000 people; longest match wins. Same-name players (Ken Griffey Sr./Jr., the two Bondses) come back as **ambiguous**, so Marty asks rather than guesses. "Jr."/"Sr." decide between same-name players. Managers with no playing career (Cal Ripken Sr.) are set aside | `store.ts` |
+| Fact selection | Ranked by relevance: card's issue-year season and team, then big career achievements, league leads, awards, connections between cards in the room, then Wikipedia trivia. Skips facts already shared and varies the kind of fact | `facts.ts` |
+| Commentary policy | One volunteered fact per trip; quiet for 60 s after a card is discussed, then it counts as a revisit; 8 s minimum gap between unprompted comments; never talks over a reply in progress. Questions always get an answer | `src/lib/baseball/commentary.ts` |
+| Orchestration | Listens to the existing mission controller and asks `/api/reply` for lines with the right knowledge request. Async; failures fall back to built-in lines; never touches motion | `src/lib/voice/director.ts` |
+| Voice | The persona prompt gets a BASEBALL FACTS block. Every number, award or story must come from it, copied exactly; sourced items are hedged; ambiguous names → ask | `src/lib/voice/openai.ts` |
+
+The knowledge layer is model-agnostic: it returns facts, and only `openai.ts` knows about prompts. Exact statistics always come from deterministic queries. The text model only narrates them.
+
+**Cards vs seasons:** each card records its manufacturer/set, **issue year**, team shown, and **season represented** (left `null` when unknown rather than guessed). Card facts say "in 1989, the year this card was issued". They don't claim to be the stats printed on the card. Cards link to players by Lahman ID, so several cards of one player would share the same facts.
+
+### Importing the Lahman data
+
+The repository includes a ready-made `data/baseball/knowledge.json` built from a Baseball Databank snapshot, so this step is optional. Seasons run through **2021**. To use the current official release (Version 2025, through the 2025 season):
+
+1. Download the comma-delimited (CSV) version from https://sabr.org/lahman-database/ and unzip it.
+2. Run:
+   ```bash
+   npm run import:lahman -- --src ~/Downloads/lahman_1871-2025_csv --version "Lahman 2025"
+   ```
+   The folder can hold the CSVs directly or in `core/` and `contrib/` sub-folders. Options:
+   - `--players all` imports full season detail for everyone (a much bigger file).
+   - `--players id1,id2` picks specific players.
+3. Restart the app. The bot icon shows the dataset and its last season.
+
+The importer reads only `People`, `Batting`, `Pitching`, `BattingPost`, `AllstarFull`, `AwardsPlayers`, `HallOfFame` and `Teams`. Missing values stay null (never 0). It fails loudly if a catalog player's Lahman ID is not in `People.csv`.
+
+### Wikipedia
+
+Wikipedia supplements the statistics with biography and trivia:
+- It is used only for an already-identified player: the card's exact article title, or a unique full name. It uses the official REST summary endpoint (`/api/rest_v1/page/summary/{title}`), never scraping or bulk downloads.
+- Up to three short sentences are taken from the lead summary. Disambiguation pages and non-baseball articles are rejected.
+- Each fact keeps the article URL, revision id and retrieval time. It is marked "sourced", and the voice hedges anything that reads like an anecdote.
+- Summaries are cached in memory and in `.cache/wikipedia/` for 7 days. Failures are cached for 10 minutes, and requests time out after 2.5 s.
+- Volunteered commentary never waits for Wikipedia: it uses cached facts and refreshes in the background. Questions may wait up to the timeout.
+- If Wikipedia is down or disabled, Marty uses the Lahman facts alone.
+
+### Attribution and licensing
+
+- **Lahman Baseball Database:** CC BY-SA 3.0. Attribution is given in the bot popover, under each message that uses a fact, and in `data/baseball/README.md`. The derived `knowledge.json` is shared under the same license.
+- **Wikipedia:** CC BY-SA 4.0. Messages using Wikipedia facts link to the article; the revision and retrieval date appear on hover.
+- Before any commercial use, review the current terms on SABR's Lahman page. The 2025 release includes Negro Leagues data licensed from Seamheads, which may carry its own terms. Also check that share-alike obligations fit your product.
+
 ## Architecture
 
 ```
@@ -94,7 +153,10 @@ src/
   lib/twin/           environment & cards, geometry/transform, occupancy grid, A*,
                       target resolution, motion (PoseSource + SimulatedMotion), mission controller
   lib/twin/__tests__  node:test suites for the above
-  lib/voice/          Marty's voice: persona + OpenAI call (server), facts + built-in lines (shared)
+  lib/voice/          Marty's voice: persona + OpenAI call (server), facts + built-in lines, chat director
+  lib/baseball/       knowledge store, fact building/selection, Wikipedia client, commentary policy, service
+  scripts/            import-lahman.ts (Lahman CSV → data/baseball/knowledge.json)
+  data/baseball/      generated knowledge file + its license/attribution note
   app/api/decide      POST: message + twin context → DecisionResult
   app/api/reply       POST: outcome facts + recent chat → Marty's reply
   app/api/status      GET: which model is configured (no secrets)
@@ -110,7 +172,8 @@ npm run dev        # development server
 npm run build      # production build (includes type-check)
 npm start          # serve the production build
 npm run typecheck  # tsc --noEmit
-npm test           # pathfinding, resolution, motion and mission-controller tests (node:test, no extra deps)
+npm test           # navigation, voice, baseball knowledge and commentary tests (node:test, no extra deps)
+npm run import:lahman -- --src <csv folder> [--version "Lahman 2025"]
 ```
 
 `npm test` uses Node's built-in test runner with TypeScript type stripping, so it needs Node 22.6 or newer. The app itself runs on Node 20.9+.

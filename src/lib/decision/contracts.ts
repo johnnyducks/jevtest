@@ -111,6 +111,7 @@ export interface ApiErrorBody {
 export interface StatusBody {
   jev: { configured: boolean; model: string };
   voice: { configured: boolean; model: string };
+  knowledge: { available: boolean; version: string | null; seasonsThrough: number | null; wikipedia: boolean };
 }
 
 export const MAX_MESSAGE_CHARS = 4000;

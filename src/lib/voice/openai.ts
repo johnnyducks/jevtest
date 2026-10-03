@@ -3,8 +3,10 @@
  * from the navigation system that the reply must not contradict. Falls back to
  * built-in lines when no key is set or the call fails. SERVER ONLY.
  */
-import { ENVIRONMENT } from "../twin/environment";
-import { builtInReply, type Outcome } from "./lines";
+import type { KnowledgeBundle } from "../baseball/service";
+import type { Fact } from "../baseball/types";
+import { ENVIRONMENT } from "../twin/environment.ts";
+import { builtInReply, type Outcome } from "./lines.ts";
 
 const TIMEOUT_MS = 30_000;
 
@@ -49,7 +51,18 @@ Truth rules: the FACTS block comes from your navigation system and is ground tru
 - stopped: confirm you stopped.
 - error: your decision engine is unavailable; say so and suggest retrying.
 
-Cards in the room: ${CARDS}.`;
+Cards in the room: ${CARDS}.
+
+Baseball: you are a baseball-obsessed little robot who knows what he's looking at and loves sharing the good stuff. Rules for baseball content:
+- Every baseball statistic, award, year, record or story you mention must come from the BASEBALL FACTS block. Copy numbers and years exactly. Never fill gaps with your own knowledge, never invent quotes or anecdotes.
+- Facts marked "dataset" come from the Lahman Baseball Database. Facts marked "sourced (Wikipedia)" come from a Wikipedia summary; if one reads like a story rather than a statistic, hedge lightly ("the story goes", "according to Wikipedia").
+- If there are no BASEBALL FACTS, don't state baseball facts. If someone asks about a player you have no facts for, say it isn't in your records.
+- If the knowledge status is "ambiguous", ask which player they mean and list the options with their years. Don't guess.
+- trigger "navigate": you are heading to the card; add one fact, briefly, connected to the card or the player.
+- trigger "arrive": you just pulled up to the card; make one fresh observation using the fact. Don't repeat the route.
+- trigger "revisit": you've seen this card before this session; acknowledge that and share the new fact.
+- trigger "ask": answer the question directly from the facts. Lead with the most relevant one; you may use up to three.
+- Vary how you open. Light jokes and enthusiasm are welcome. Occasionally, not always, end with a short natural follow-up question.`;
 
 function factsBlock(o: Outcome) {
   const lines = [
@@ -63,10 +76,25 @@ function factsBlock(o: Outcome) {
   return lines.filter(Boolean).join("\n");
 }
 
-export async function martyReply(o: Outcome, history: ChatLine[]): Promise<ReplyResult> {
+function knowledgeBlock(k: KnowledgeBundle | null | undefined): string {
+  if (!k || k.status === "none") return "";
+  const lines = [`trigger: ${k.trigger}`, `knowledge status: ${k.status}`];
+  if (k.subject) lines.push(`player: ${k.subject.name}${k.subject.cardId ? " (a card in this room)" : ""}`);
+  if (k.options?.length) lines.push(`could be: ${k.options.map((o) => `${o.name} (${o.years})`).join(" | ")}`);
+  k.facts.forEach((f, i) => lines.push(`${i + 1}. [${f.verification === "dataset" ? "dataset" : "sourced (Wikipedia)"}] ${f.text}`));
+  if (!k.facts.length && k.status === "resolved") lines.push("(no new facts available; don't add baseball claims)");
+  return `\n\nBASEBALL FACTS (from Marty's knowledge service; ${k.dataset.version}):\n${lines.join("\n")}`;
+}
+
+/** Facts as returned to the browser, with their sources, for attribution and repeat tracking. */
+export function publicFacts(k: KnowledgeBundle | null | undefined) {
+  return (k?.facts ?? []).map((f: Fact) => ({ id: f.id, kind: f.kind, playerId: f.subject.playerId, text: f.text, verification: f.verification, source: f.source }));
+}
+
+export async function martyReply(o: Outcome, history: ChatLine[], knowledge?: KnowledgeBundle | null): Promise<ReplyResult> {
   const cfg = voiceConfig();
   const fallback = (note: string): ReplyResult => ({
-    text: builtInReply(o, ENVIRONMENT.cards.map((c) => c.name)),
+    text: builtInReply(o, ENVIRONMENT.cards.map((c) => c.name), knowledge),
     source: "built-in",
     note,
   });
@@ -75,7 +103,10 @@ export async function martyReply(o: Outcome, history: ChatLine[]): Promise<Reply
   const messages = [
     { role: "system", content: PERSONA },
     ...history.slice(-10).map((h) => ({ role: h.role, content: h.text })),
-    { role: "user", content: `${o.request}\n\nFACTS (from Marty's navigation system, not from the person):\n${factsBlock(o)}` },
+    {
+      role: "user",
+      content: `${o.request}\n\nFACTS (from Marty's navigation system, not from the person):\n${factsBlock(o)}${knowledgeBlock(knowledge)}`,
+    },
   ];
   const request: Record<string, unknown> = { model: cfg.model, messages, max_completion_tokens: 1500, reasoning_effort: "low" };
 

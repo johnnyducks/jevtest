@@ -3,6 +3,7 @@
  * same personality, used when no text model is configured (or it fails).
  * Shared by client and server; no secrets.
  */
+import type { KnowledgeBundle } from "../baseball/service";
 import type { Mission } from "../twin/controller";
 
 export type OutcomeStatus = "moving" | "arrived" | "needs_clarification" | "no_route" | "rejected" | "answered" | "stopped" | "error";
@@ -44,17 +45,37 @@ export function outcomeOf(m: Mission): Outcome | null {
 
 const pick = <T,>(list: T[], seq: number) => list[Math.abs(seq) % list.length];
 
-/** A complete reply in Marty's voice, built from the facts alone. */
-export function builtInReply(o: Outcome, knownCards: string[]): string {
+/** End a sentence after a name without doubling the period ("Ken Griffey Jr."). */
+const dot = (name: string) => (name.endsWith(".") ? name : `${name}.`);
+
+/**
+ * A complete reply in Marty's voice, built from the facts alone. When a
+ * knowledge bundle is supplied, its facts are quoted verbatim (never invented).
+ */
+export function builtInReply(o: Outcome, knownCards: string[], k?: KnowledgeBundle | null): string {
+  const base = baseLine(o, knownCards, k);
+  const fact = k?.facts[0]?.text;
+  if (!fact) return base;
+  if (o.status === "answered" && k?.status === "resolved") return `Here's what my records say. ${k.facts.map((f) => f.text).join(" ")}`;
+  if (k?.trigger === "revisit") return `${base} I was here earlier, so here's another one: ${fact}`;
+  if (k?.trigger === "arrive") return `${base} While I'm here: ${fact}`;
+  if (o.status === "moving") return `${base} Fun fact: ${fact}`;
+  return base;
+}
+
+function baseLine(o: Outcome, knownCards: string[], k?: KnowledgeBundle | null): string {
+  if (o.status === "answered" && k?.status === "ambiguous" && k.options?.length) {
+    return `That name could mean ${k.options.map((x) => `${x.name} (${x.years})`).join(" or ")}. I'd rather ask than make something up. Which one?`;
+  }
   const t = o.target ?? "there";
   const m = o.routeMeters !== undefined ? `${o.routeMeters} meters` : "a short hop";
   switch (o.status) {
     case "moving":
       return pick(
         [
-          `Off to ${t}. ${m}${o.detour ? ", taking the scenic route because the furniture refuses to move." : ", straight shot. Try to contain your excitement."}`,
+          `Off to ${dot(t)} ${m}${o.detour ? ", taking the scenic route because the furniture refuses to move." : ", straight shot. Try to contain your excitement."}`,
           `${t}? Excellent taste. Plotting ${m}${o.detour ? " around the obstacles, since driving through walls is still in beta." : " in a straight line, like a professional."}`,
-          `On my way to ${t}. ${m} of pure, uninterrupted competence${o.detour ? ", with a detour for dramatic effect" : ""}.`,
+          `On my way to ${dot(t)} ${m} of pure, uninterrupted competence${o.detour ? ", with a detour for dramatic effect" : ""}.`,
         ],
         o.seq,
       );
@@ -101,7 +122,7 @@ export function builtInReply(o: Outcome, knownCards: string[]): string {
 /** Short line appended when a mission finishes after the reply was written. */
 export function arrivalLine(target: string, seq: number) {
   return pick(
-    [`Arrived at ${target}. Please hold your applause.`, `${target}, as requested. I'd tip my cap if I had one.`, `Made it to ${target}. Zero collisions, mild smugness.`],
+    [`Arrived at ${dot(target)} Please hold your applause.`, `${target}, as requested. I'd tip my cap if I had one.`, `Made it to ${dot(target)} Zero collisions, mild smugness.`],
     seq,
   );
 }

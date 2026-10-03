@@ -54,6 +54,17 @@ export default function Studio() {
               {status && !status.voice.configured && <span className="pop-warn">Set OPENAI_API_KEY for freshly written replies.</span>}
             </span>
           </div>
+          <div className="pop-row" style={{ marginTop: 10 }}>
+            <span className={`dot ${status?.knowledge.available ? "on" : ""}`} />
+            <span>
+              <b>Baseball knowledge</b>
+              <span className="pop-sub">
+                {status?.knowledge.available
+                  ? `Lahman Baseball Database, seasons through ${status.knowledge.seasonsThrough}${status.knowledge.wikipedia ? ", plus Wikipedia summaries" : ""}. CC BY-SA.`
+                  : "Not loaded: run npm run import:lahman."}
+              </span>
+            </span>
+          </div>
         </Popover>
       </header>
 
