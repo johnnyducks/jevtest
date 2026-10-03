@@ -120,7 +120,7 @@ function EnableLive({ compact = false }: { compact?: boolean }) {
               Copy <code>.env.example</code> to <code>.env.local</code>
             </li>
             <li>
-              Set <code>JEV_API_KEY</code> (and optionally <code>ANTHROPIC_API_KEY</code> for generated replies)
+              Set <code>JEV_API_KEY</code> (and optionally <code>OPENAI_API_KEY</code> for generated replies)
             </li>
             <li>Restart the dev server and switch to Live</li>
           </ol>
@@ -182,7 +182,7 @@ function DecisionView({ turn, revealed, onRetry }: { turn: Turn; revealed: numbe
       label: "Downstream effect",
       detail:
         turn.reply.status === "done"
-          ? turn.reply.data.source === "claude"
+          ? turn.reply.data.source === "generated"
             ? `reply generated · ${turn.reply.data.model}`
             : `scripted reply · ${turn.reply.data.note ?? "demo"}`
           : turn.reply.status === "error"

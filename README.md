@@ -8,7 +8,7 @@ A chat app that shows a structured AI decision engine at work. For each message 
 4. animates the probabilities and scores that came back,
 5. applies a deterministic policy to choose an **action** (answer, troubleshoot, escalate, …) and a priority,
 6. records the decision in a session timeline, and
-7. writes the reply with a separate text model (Claude), or uses a clearly labelled scripted reply.
+7. writes the reply with a separate text model (OpenAI), or uses a clearly labelled scripted reply.
 
 ## Quick start
 
@@ -27,7 +27,7 @@ Requires Node 20.9+.
 cp .env.example .env.local
 # edit .env.local:
 JEV_API_KEY=your-typesafe-api-key        # required for Live mode
-ANTHROPIC_API_KEY=your-anthropic-key     # optional: generated replies in Live mode
+OPENAI_API_KEY=your-openai-key           # optional: generated replies in Live mode
 npm run dev
 ```
 
@@ -43,8 +43,8 @@ Restart the server and the **Live** toggle in the header becomes available. In L
 | `JEV_API_KEY` | for Live | — | Jev / TypeSafe API key (`TYPESAFE_API_KEY` is also accepted) |
 | `JEV_MODEL` | no | `jev-latest` | Any name from `GET /v1/models` |
 | `JEV_API_BASE` | no | `https://api.typesafe.ai` | Override for a proxy or a mock |
-| `ANTHROPIC_API_KEY` | no | — | Claude-generated replies in Live mode |
-| `ANTHROPIC_MODEL` | no | `claude-opus-5-5` | Reply model |
+| `OPENAI_API_KEY` | no | — | OpenAI-generated replies in Live mode |
+| `OPENAI_MODEL` | no | `gpt-5` | Reply model (any Chat Completions model your key can use) |
 
 Keys are read only in server code (`src/lib/jev/client.ts`, `src/lib/respond/generate.ts`). None of them uses the `NEXT_PUBLIC_` prefix, and `/api/status` reports only whether each integration is configured.
 
@@ -76,7 +76,7 @@ Each rule that fires is listed in the inspector with the numbers it used.
 src/
   lib/jev/           Jev API types (from the published OpenAPI spec) + server-only client
   lib/decision/      question set, policy, demo simulator, engine (decide())
-  lib/respond/       reply generation (Claude or scripted), separate from the decision layer
+  lib/respond/       reply generation (OpenAI or scripted), separate from the decision layer
   app/api/decide     POST: message → DecisionResult
   app/api/respond    POST: message + selected effect → reply
   app/api/status     GET: which integrations are configured (no secrets)
@@ -86,7 +86,7 @@ src/
 - **Decision, reply and UI layers are kept separate.** The reply generator only sees the selected action and its directive. It does not see the raw probabilities.
 - **Session persistence:** the conversation and timeline are kept in `sessionStorage`, so they survive a reload but end when the tab closes. A request cut off by a reload is marked retryable.
 - **Errors and retries:** the server retries Jev once on 429, 529, 5xx or network errors and respects `retry-after`. The UI shows inline errors with **Retry** for the decision and **Retry reply** for the reply.
-- **Dependencies:** `next`, `react`, `react-dom` and `@anthropic-ai/sdk`. There is no CSS framework.
+- **Dependencies:** `next`, `react` and `react-dom` only. Jev and OpenAI are called with plain `fetch`. There is no CSS framework.
 
 ## Scripts
 

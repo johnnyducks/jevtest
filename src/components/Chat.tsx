@@ -208,7 +208,7 @@ function TurnView({
         <div className="bubble bot">
           {turn.reply.data.text}
           <div className="bubble-meta">
-            {turn.reply.data.source === "claude" ? (
+            {turn.reply.data.source === "generated" ? (
               <span className="tag live">generated · {turn.reply.data.model}</span>
             ) : (
               <span className="tag sim">scripted</span>

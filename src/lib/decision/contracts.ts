@@ -67,7 +67,7 @@ export interface ReplyRequestBody {
   };
 }
 
-export type ReplySource = "claude" | "scripted";
+export type ReplySource = "generated" | "scripted";
 
 export interface ReplyResult {
   text: string;

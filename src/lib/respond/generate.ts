@@ -1,14 +1,20 @@
 /**
- * Conversational reply generation, independent of the decision engine.
+ * Conversational reply generation (OpenAI), independent of the decision engine.
  * It receives only the selected effect, never raw probabilities to re-interpret.
  * SERVER ONLY.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import type { ActionId, ReplyRequestBody, ReplyResult } from "../decision/contracts";
 
+const TIMEOUT_MS = 45_000;
+
 export function replyConfig() {
-  const apiKey = process.env.ANTHROPIC_API_KEY || "";
-  return { apiKey, configured: apiKey.length > 0, model: process.env.ANTHROPIC_MODEL || "claude-opus-5-5" };
+  const apiKey = process.env.OPENAI_API_KEY || "";
+  return {
+    apiKey,
+    configured: apiKey.length > 0,
+    model: process.env.OPENAI_MODEL || "gpt-5",
+    base: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, ""),
+  };
 }
 
 export class ReplyError extends Error {
@@ -23,111 +29,99 @@ Follow the operator directive exactly. Keep replies short: 1-4 sentences, plain 
 You are a demo assistant with no access to accounts, orders or tools; never claim to have taken real-world actions.
 If the action is an escalation, say a human teammate would take over in a real deployment.`;
 
+interface ChatCompletion {
+  model: string;
+  choices: { finish_reason: string; message: { content: string | null; refusal?: string | null } }[];
+}
+
 export async function generateReply(body: ReplyRequestBody): Promise<ReplyResult> {
   const cfg = replyConfig();
   if (body.mode !== "live") {
     return { text: scripted(body.decision.effect.action), source: "scripted", note: "Demo mode" };
   }
   if (!cfg.configured) {
-    return {
-      text: scripted(body.decision.effect.action),
-      source: "scripted",
-      note: "ANTHROPIC_API_KEY not set",
-    };
+    return { text: scripted(body.decision.effect.action), source: "scripted", note: "OPENAI_API_KEY not set" };
   }
 
-  const client = new Anthropic({ apiKey: cfg.apiKey, maxRetries: 1, timeout: 30_000 });
-  const history = (body.history ?? []).slice(-8).map((t) => ({ role: t.role, content: t.text }) as const);
   const { effect, intent, intentConfidence } = body.decision;
+  const messages = [
+    { role: "system", content: SYSTEM },
+    ...(body.history ?? []).slice(-8).map((t) => ({ role: t.role, content: t.text })),
+    {
+      role: "user",
+      content: `${body.message}\n\n<operator_directive>\nSelected action: ${effect.label} (${effect.priority}). Intent: ${intent} (${Math.round(
+        intentConfidence * 100,
+      )}% confidence).\n${effect.directive}\n</operator_directive>`,
+    },
+  ];
 
-  const params = {
+  // Token budget covers the model's hidden reasoning as well as the short reply.
+  const request: Record<string, unknown> = {
     model: cfg.model,
-    max_tokens: 1024,
-    output_config: { effort: "low" as const },
-    system: SYSTEM,
-    messages: [
-      ...mergeRoles(history),
-      {
-        role: "user" as const,
-        content: `${body.message}\n\n<operator_directive>\nSelected action: ${effect.label} (${effect.priority}). Intent: ${intent} (${Math.round(
-          intentConfidence * 100,
-        )}% confidence).\n${effect.directive}\n</operator_directive>`,
-      },
-    ],
+    messages,
+    max_completion_tokens: 2000,
+    reasoning_effort: "low",
   };
 
+  let res = await call(cfg, request);
+  if (res.status === 400 && /reasoning_effort/i.test(res.message)) {
+    // Non-reasoning models reject this setting; retry once without it.
+    delete request.reasoning_effort;
+    res = await call(cfg, request);
+  }
+
+  if (!res.ok) throw mapError(res.status, res.code, res.message, cfg.model);
+
+  const choice = res.data.choices?.[0];
+  if (choice?.message?.refusal) {
+    throw new ReplyError("refusal", "The text model declined to answer this message.", false);
+  }
+  const text = (choice?.message?.content ?? "").trim();
+  if (!text) throw new ReplyError("empty", "The text model returned an empty reply.", true);
+  return { text, source: "generated", model: res.data.model };
+}
+
+type CallResult =
+  | { ok: true; status: number; data: ChatCompletion; code: string; message: string }
+  | { ok: false; status: number; code: string; message: string };
+
+async function call(cfg: ReturnType<typeof replyConfig>, request: Record<string, unknown>): Promise<CallResult> {
+  let res: Response;
   try {
-    let response;
-    try {
-      // Server-side refusal fallback (beta). Not every account has it enabled,
-      // so a 400 here is retried once as a plain request without it.
-      response = await client.beta.messages.create({
-        ...params,
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-      });
-    } catch (err) {
-      if (!(err instanceof Anthropic.BadRequestError)) throw err;
-      console.warn(`Reply: request with fallbacks rejected (${apiMessage(err)}); retrying without them.`);
-      response = await client.messages.create(params);
-    }
-    if (response.stop_reason === "refusal") {
-      throw new ReplyError("refusal", "The text model declined to answer this message.", false);
-    }
-    const text = response.content
-      .map((b) => (b.type === "text" ? b.text : ""))
-      .join("")
-      .trim();
-    if (!text) throw new ReplyError("empty", "The text model returned an empty reply.", true);
-    return { text, source: "claude", model: response.model };
+    res = await fetch(`${cfg.base}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      cache: "no-store",
+    });
   } catch (err) {
-    if (err instanceof ReplyError) throw err;
-    if (err instanceof Anthropic.APIError) console.error(`Reply failed: HTTP ${err.status} ${apiMessage(err)}`);
-    if (err instanceof Anthropic.AuthenticationError) {
-      throw new ReplyError("unauthorized", "Anthropic rejected the API key. Check ANTHROPIC_API_KEY in .env.local.", false);
-    }
-    if (err instanceof Anthropic.RateLimitError) {
-      throw new ReplyError("rate_limited", "Text model rate limit reached.", true);
-    }
-    if (err instanceof Anthropic.APIConnectionError) {
-      throw new ReplyError("network", "Could not reach the text model.", true);
-    }
-    if (err instanceof Anthropic.NotFoundError) {
-      throw new ReplyError("model_not_found", `Model "${cfg.model}" is not available to this API key. Check ANTHROPIC_MODEL.`, false);
-    }
-    if (err instanceof Anthropic.APIError) {
-      const msg = apiMessage(err);
-      if (/credit balance/i.test(msg)) {
-        throw new ReplyError(
-          "no_credit",
-          "Your Anthropic account has no credit. Add some under Billing at console.anthropic.com, then retry.",
-          false,
-        );
-      }
-      throw new ReplyError("upstream", `Text model error (HTTP ${err.status ?? "?"}): ${msg}`, (err.status ?? 500) >= 500);
-    }
-    throw new ReplyError("unknown", "Reply generation failed.", true);
+    const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+    throw new ReplyError(timedOut ? "timeout" : "network", timedOut ? "The text model took too long to answer." : "Could not reach OpenAI.", true);
   }
+  const json = (await res.json().catch(() => null)) as (ChatCompletion & { error?: { message?: string; code?: string } }) | null;
+  if (res.ok && json) return { ok: true, status: res.status, data: json, code: "", message: "" };
+  // OpenAI's own error text (never contains the API key).
+  const message = String(json?.error?.message ?? `HTTP ${res.status}`).slice(0, 300);
+  const code = String(json?.error?.code ?? "");
+  console.error(`Reply failed: HTTP ${res.status} ${code} ${message}`);
+  return { ok: false, status: res.status, code, message };
 }
 
-/** Anthropic's own error text (never contains the API key). */
-function apiMessage(err: InstanceType<typeof Anthropic.APIError>): string {
-  const body = err.error as { error?: { message?: unknown } } | undefined;
-  const m = body?.error?.message;
-  return (typeof m === "string" ? m : err.message).slice(0, 300);
-}
-
-/** The Messages API expects alternating roles starting with "user". */
-function mergeRoles(turns: { role: "user" | "assistant"; content: string }[]) {
-  const out: { role: "user" | "assistant"; content: string }[] = [];
-  for (const t of turns) {
-    if (!out.length && t.role !== "user") continue;
-    const last = out[out.length - 1];
-    if (last && last.role === t.role) last.content += `\n\n${t.content}`;
-    else out.push({ ...t });
+function mapError(status: number, code: string, message: string, model: string): ReplyError {
+  if (status === 401) return new ReplyError("unauthorized", "OpenAI rejected the API key. Check OPENAI_API_KEY in .env.local.", false);
+  if (code === "insufficient_quota" || /quota|billing/i.test(message)) {
+    return new ReplyError(
+      "no_credit",
+      "Your OpenAI account has no available credit. Add some under Billing at platform.openai.com, then retry.",
+      false,
+    );
   }
-  if (out.length && out[out.length - 1].role === "user") out.pop();
-  return out;
+  if (status === 429) return new ReplyError("rate_limited", "OpenAI rate limit reached. Wait a moment and retry.", true);
+  if (status === 404 || code === "model_not_found") {
+    return new ReplyError("model_not_found", `Model "${model}" is not available to this API key. Check OPENAI_MODEL.`, false);
+  }
+  return new ReplyError("upstream", `Text model error (HTTP ${status}): ${message}`, status >= 500);
 }
 
 const SCRIPTS: Record<ActionId, string> = {
