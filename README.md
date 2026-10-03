@@ -104,6 +104,16 @@ The gear icon on the map has Stop, Resume (finishes the remaining stops), Dock, 
 
 The text model never decides anything. It phrases what Jev and the rules already decided, and its prompt forbids inventing reasons, numbers or points. Built-in lines are tagged **built-in** in the chat.
 
+### 3D and first-person views
+
+The **2D / 3D / FPV** switch at the bottom-right of the map changes only how the room is drawn. All three views show the same live simulation: Marty's position and heading, the route, cards, bonuses and points come from the server stream. Switching never touches the simulation, so Marty keeps driving. Your choice is remembered in this browser.
+
+- **2D**: the original top-down map, unchanged.
+- **3D**: an observer camera. Drag to orbit, scroll or pinch to zoom, right-drag to pan. The near wall is see-through. Click a card to request it.
+- **FPV**: the view from a camera mounted on Marty, 16 cm up and just in front of his center, tilted up 7°. It moves with every pose update, and turns are damped slightly so they feel like a camera rather than a cut. A reticle, heading and position readout, and labels sit on top: card name and current points for cards within about 4.5 m ahead, plus a **NEXT** marker on the trip's next stop.
+
+The 2D→3D mapping lives in `lib/twin/space3d.ts`. It holds the axes, heights of walls and furniture, card placement and the FPV camera mount, and its tests check that the camera follows the same poses the 2D map draws. Rendering uses Three.js through React Three Fiber (`components/three/Room3D.tsx`). That code loads only when someone opens a 3D view. Without WebGL, the 3D views show a short notice and the 2D map still works.
+
 ### Environment
 
 The room is 12 m × 8 m, with the origin at the bottom-left and +y pointing north. All map elements go through one world→screen transform (`lib/twin/geometry.ts`). The room and card catalog are plain data in `lib/twin/environment.ts`. The obstacles are a partition wall, a display table, two plinths, a low shelf, an equipment rack and a locked vault cage. There is a ramp up to the mezzanine in the north-west corner. The cards are Ken Griffey Jr., Rickey Henderson, Bobby Bonds, Barry Bonds, Cal Ripken Jr., Hank Aaron, Jackie Robinson, Ichiro Suzuki, Mickey Mantle, Pete Rose and Honus Wagner (the one in the vault). Their positions are fictional.
@@ -189,10 +199,11 @@ src/
   app/api/decide      POST: one message + twin context → DecisionResult (single-user engine, still available)
   app/api/reply       POST: outcome facts + recent chat → Marty's reply
   app/api/status      GET: which models are configured, whether an operator key is required (no secrets)
-  components/         Studio (header), Popover, live/LiveView + LiveChat + useLive, twin/TwinMap (SVG)
+  components/         Studio (header), Popover, live/LiveView + LiveChat + useLive, twin/TwinMap (SVG),
+                      three/Room3D (3D observer + FPV, loaded on demand)
 ```
 
-Dependencies are `next`, `react` and `react-dom` only. There is no database and no robot-control integration. State lives in server memory, so run one server process: several processes would each run their own Marty.
+Dependencies are `next`, `react`, `react-dom`, and `three` with `@react-three/fiber` for the 3D views. There is no database and no robot-control integration. State lives in server memory, so run one server process: several processes would each run their own Marty.
 
 ## Scripts
 

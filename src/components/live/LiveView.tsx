@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import type { LiveSnapshot } from "@/lib/live/types";
 import { HANDLE } from "@/lib/live/types";
@@ -11,6 +12,19 @@ import Popover from "../Popover";
 import TwinMap from "../twin/TwinMap";
 import LiveChat from "./LiveChat";
 import { useLive, useSmoothPose, useStored } from "./useLive";
+
+// The 3D views load only when someone opens them, so the 2D map stays as light as before.
+const Room3D = dynamic(() => import("../three/Room3D"), {
+  ssr: false,
+  loading: () => <div className="three-fallback mono">Loading 3D…</div>,
+});
+
+type ViewMode = "2d" | "orbit" | "fpv";
+const VIEWS: { id: ViewMode; label: string; title: string }[] = [
+  { id: "2d", label: "2D", title: "Top-down map" },
+  { id: "orbit", label: "3D", title: "3D observer: drag to orbit, scroll to zoom" },
+  { id: "fpv", label: "FPV", title: "First-person: Marty's camera" },
+];
 
 const GRID = buildGrid(ENVIRONMENT);
 const VIEW = makeTransform(ENVIRONMENT.width, ENVIRONMENT.height);
@@ -108,6 +122,8 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   const pose = useSmoothPose(snap?.telemetry.pose);
   const [handle, setHandle] = useStored("marty.handle");
   const [opKey, setOpKey] = useStored("marty.operatorKey");
+  const [storedView, setView] = useStored("marty.view");
+  const view: ViewMode = storedView === "orbit" || storedView === "fpv" ? storedView : "2d";
   const [handleDraft, setHandleDraft] = useState("");
   const [editingHandle, setEditingHandle] = useState(false);
   const [draft, setDraft] = useState("");
@@ -168,7 +184,8 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   return (
     <div className="twin">
       <section className="twin-stage" aria-label="Map">
-        <div className="map-frame">
+        <div className={`map-frame${view === "2d" ? "" : " is-3d"}`}>
+          {view === "2d" ? (
           <TwinMap
             env={ENVIRONMENT}
             grid={GRID}
@@ -182,6 +199,26 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
             onPlace={canOperate ? (p) => void op({ action: "place", x: p.x, y: p.y }) : undefined}
             onCardGo={(c) => (handle ? void send(`Go to ${c.name}`) : setDraft(`Go to ${c.name}`))}
           />
+          ) : (
+            <Room3D
+              env={ENVIRONMENT}
+              pose={pose}
+              status={tel.status}
+              trip={snap.trip}
+              bonuses={snap.game.bonuses}
+              cardPoints={snap.game.cardPoints}
+              mode={view}
+              onCardGo={(c) => (handle ? void send(`Go to ${c.name}`) : setDraft(`Go to ${c.name}`))}
+            />
+          )}
+
+          <div className="view-switch mono" role="tablist" aria-label="View">
+            {VIEWS.map((v) => (
+              <button key={v.id} role="tab" aria-selected={view === v.id} className={view === v.id ? "on" : ""} title={v.title} onClick={() => setView(v.id)}>
+                {v.label}
+              </button>
+            ))}
+          </div>
 
           <div className="map-corner">
             <span className="viewers mono" title="People watching right now">
@@ -198,6 +235,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
                 <li>You score a card&apos;s points when Marty visits it for you. Bonuses pop up now and then.</li>
                 <li>Battery drains with distance. Marty recharges at the dock.</li>
                 <li>Click a card on the map to request it.</li>
+                <li>2D / 3D / FPV switches the view. 3D: drag to orbit, scroll to zoom. FPV is Marty&apos;s own camera.</li>
               </ul>
             </Popover>
             <Popover label="Settings" align="right" hover={false} trigger={<Gear width={16} height={16} />}>

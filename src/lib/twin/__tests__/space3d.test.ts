@@ -1,0 +1,87 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { makeTransform } from "../geometry.ts";
+import { planPath } from "../pathfinding.ts";
+import { CARD_SIZE, cardPlacement, forward, fpvCamera, fromScene, MARTY, obstacleBox, surfaceHeight, toScene } from "../space3d.ts";
+import { env, grid, newMotion } from "./helpers.ts";
+
+const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
+
+test("world ↔ scene mapping round-trips and keeps the 2D map's orientation", () => {
+  for (const p of [{ x: 0, y: 0 }, { x: 3.3, y: 7.1 }, { x: 12, y: 8 }]) {
+    const back = fromScene(toScene(p, 0.5));
+    assert.ok(close(back.x, p.x) && close(back.y, p.y));
+  }
+  // North is up on the 2D map (smaller screen y) and away from the observer (−Z) in 3D.
+  const v = makeTransform(env.width, env.height);
+  const a = { x: 5, y: 2 };
+  const b = { x: 5, y: 6 };
+  assert.ok(v.toScreen(b).y < v.toScreen(a).y);
+  assert.ok(toScene(b)[2] < toScene(a)[2]);
+  // East is right in both.
+  assert.ok(toScene({ x: 6, y: 0 })[0] > toScene({ x: 2, y: 0 })[0]);
+});
+
+test("FPV camera sits on Marty, at lens height, looking along his heading", () => {
+  for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2, 0.7, -2.3]) {
+    const pose = { x: 4.2, y: 2.6, heading };
+    const cam = fpvCamera(pose);
+    const at = fromScene(cam.position);
+    assert.ok(close(at.x, pose.x + Math.cos(heading) * MARTY.camForward));
+    assert.ok(close(at.y, pose.y + Math.sin(heading) * MARTY.camForward));
+    assert.equal(cam.position[1], MARTY.camHeight);
+    const look = fromScene(cam.target);
+    const yaw = Math.atan2(look.y - at.y, look.x - at.x);
+    assert.ok(close(Math.cos(yaw), Math.cos(heading)) && close(Math.sin(yaw), Math.sin(heading)), `heading ${heading}`);
+    assert.ok(cam.target[1] > cam.position[1], "tilted slightly up, toward the cards");
+  }
+});
+
+test("while the simulation drives, the FPV camera follows the same poses the 2D map draws", () => {
+  const m = newMotion();
+  const plan = planPath(grid, m.getState().pose, { x: 9, y: 3 });
+  m.follow(plan.waypoints, "t");
+  let prev = m.getState().pose;
+  let checked = 0;
+  for (let i = 0; i < 2000 && m.getState().status === "moving"; i++) {
+    m.advance(0.05);
+    const pose = m.getState().pose;
+    const moved = Math.hypot(pose.x - prev.x, pose.y - prev.y);
+    const cam = fromScene(fpvCamera(pose).position);
+    // Same position (plus the fixed lens offset) as the pose the 2D map renders.
+    assert.ok(Math.abs(Math.hypot(cam.x - pose.x, cam.y - pose.y) - MARTY.camForward) < 1e-9);
+    if (moved > 0.02) {
+      // Driving straight: the scene's forward vector matches the direction actually travelled.
+      const f = fromScene(forward(pose.heading));
+      const dot = (f.x * (pose.x - prev.x) + f.y * (pose.y - prev.y)) / moved;
+      assert.ok(dot > 0.95, `camera faces the direction of travel (dot ${dot.toFixed(3)})`);
+      checked++;
+    }
+    prev = pose;
+  }
+  assert.ok(checked > 20);
+});
+
+test("obstacles become boxes with the same footprint", () => {
+  for (const o of env.obstacles) {
+    const b = obstacleBox(o);
+    const c = fromScene(b.center);
+    assert.ok(close(c.x, o.x + o.w / 2) && close(c.y, o.y + o.h / 2));
+    assert.equal(b.size[0], o.w);
+    assert.equal(b.size[2], o.h);
+    assert.ok(close(b.center[1], b.size[1] / 2), "sits on the floor");
+  }
+});
+
+test("every card hangs on its surface, facing out, below the top of what it's mounted on", () => {
+  for (const card of env.cards) {
+    const p = cardPlacement(env, card);
+    const c = fromScene(p.center);
+    assert.ok(Math.hypot(c.x - card.position.x, c.y - card.position.y) < 0.02, card.id);
+    // The frame's front (+Z rotated by yaw) points along the card's facing.
+    const normal = fromScene([Math.sin(p.yaw), 0, Math.cos(p.yaw)]);
+    assert.ok(close(normal.x, card.facing.x) && close(normal.y, card.facing.y), `${card.id} faces out`);
+    assert.ok(p.heightCenter + CARD_SIZE.h / 2 <= surfaceHeight(env, card), `${card.id} fits on its surface`);
+    assert.ok(p.heightCenter - CARD_SIZE.h / 2 > 0, `${card.id} above the floor`);
+  }
+});
