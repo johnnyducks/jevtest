@@ -1,8 +1,8 @@
 {
-  "name": "marty-the-brain",
+  "name": "marty-live",
   "version": "0.1.0",
   "private": true,
-  "description": "MARTY / THE BRAIN: an interactive sandbox for exploring how an autonomous robot interprets requests and selects actions, powered by Jev structured decisions.",
+  "description": "MARTY.LIVE: tell Marty where to go and watch it decide (Jev), plan a route and drive there on an overhead map.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

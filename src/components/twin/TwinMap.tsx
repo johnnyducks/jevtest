@@ -78,7 +78,7 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
       className="twin-map"
       viewBox={`0 0 ${view.width} ${view.height}`}
       role="img"
-      aria-label="Simulated overhead map of the card room"
+      aria-label="Overhead map of the card room"
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={() => setDrag(null)}

@@ -2698,3 +2698,166 @@ pre.code {
     margin-left: auto;
   }
 }
+
+/* ─── MARTY.LIVE shell: icon buttons and popovers ───────────────────────── */
+
+.brand-name {
+  letter-spacing: 0.16em;
+}
+
+.popover {
+  position: relative;
+}
+
+.icon-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--muted);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.icon-btn:hover,
+.icon-btn[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--accent-line);
+  background: var(--raise-2);
+}
+
+.icon-btn .dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+}
+
+.popover-panel {
+  position: absolute;
+  top: 100%;
+  z-index: 20;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 32px));
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: rgba(10, 14, 19, 0.97);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12.5px;
+  animation: rise 0.18s var(--ease) both;
+}
+
+/* Invisible bridge so hover survives the gap between button and panel. */
+.popover-panel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 10px;
+}
+
+.popover-panel.right {
+  right: 0;
+}
+
+.popover-panel.left {
+  left: 0;
+}
+
+.pop-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 10px;
+}
+
+.pop-row {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.pop-sub {
+  display: block;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.pop-warn {
+  display: block;
+  color: var(--sim);
+  margin-top: 4px;
+}
+
+.pop-list {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+}
+
+.pop-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.pop-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--line);
+}
+
+.pop-ctl .tm-label {
+  min-width: 64px;
+}
+
+.pop-ctl input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.pop-ctl .btn {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+
+.map-corner {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 5;
+}
+
+.map-corner .icon-btn {
+  width: 30px;
+  height: 30px;
+  background: rgba(10, 14, 19, 0.85);
+}
+
+.twin-composer {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  align-items: center;
+}
+
+.topbar > .popover {
+  margin-left: auto;
+}

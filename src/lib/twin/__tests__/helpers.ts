@@ -15,8 +15,7 @@ export const newMotion = () => new SimulatedMotion(env.defaultPose, manualSchedu
 export function fakeDecision(action: string, label = action): DecisionResult {
   return {
     id: "d",
-    mode: "demo",
-    source: "simulated",
+    source: "jev",
     model: "test-double",
     request: { model: "-", state: {}, questions: {} },
     response: {

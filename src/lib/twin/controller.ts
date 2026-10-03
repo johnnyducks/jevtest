@@ -47,8 +47,8 @@ export interface Transition {
 }
 
 export interface DecisionSummary {
-  /** Who chose the action: Jev, the demo simulator, or a deterministic rule (E-stop, clarification answer). */
-  source: "jev" | "simulated" | "rule";
+  /** Who chose the action: Jev, or a deterministic rule (E-stop, clarification answer, resume). */
+  source: "jev" | "rule";
   model?: string;
   intent?: ChoiceAnswer;
   nextAction?: ChoiceAnswer;
@@ -298,7 +298,7 @@ export class TwinController {
 
   private apply(id: string, d: DecisionResult) {
     const summary = this.summarize(d);
-    const who = d.source === "jev" ? "Jev" : "The demo simulator";
+    const who = "Jev";
     const action = d.effect.action;
     this.update(id, { decision: summary });
 
@@ -463,7 +463,7 @@ export class TwinController {
         action: "navigate_card",
         actionLabel: "Navigate to card",
         reasons: [
-          `Clarification for request #${open.seq}. The action (${inherited?.actionLabel ?? "navigate"}) came from that decision${inherited?.source === "jev" ? " by Jev" : inherited?.source === "simulated" ? " by the demo simulator" : ""}; the target was chosen by the operator.`,
+          `Clarification for request #${open.seq}. The action (${inherited?.actionLabel ?? "navigate"}) came from that decision${inherited?.source === "jev" ? " by Jev" : ""}; the target was chosen by the operator.`,
         ],
         rules: [],
         blocked: [],
@@ -530,7 +530,7 @@ export class TwinController {
 /** Label for a decision source, used in the UI and tests. */
 export function sourceLabel(d: DecisionSummary | undefined) {
   if (!d) return "—";
-  return d.source === "jev" ? `model · jev (${d.model})` : d.source === "simulated" ? "model · simulated" : "rule";
+  return d.source === "jev" ? `model · jev (${d.model})` : "rule";
 }
 
 /** Short summary of a choice answer's top value. */

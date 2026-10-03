@@ -6,10 +6,8 @@ import type { Question, SystemOneResponse } from "../jev/types";
 import type { World } from "../marty/world";
 import type { TwinContext } from "../twin/context";
 
-export type Mode = "demo" | "live";
-
-/** Where a set of answers came from. Never conflated in the UI. */
-export type DecisionSource = "jev" | "simulated";
+/** Where a set of answers came from. Only the live Jev API is used. */
+export type DecisionSource = "jev";
 
 /** Every action Marty's policy may select. Anything else is unreachable. */
 export const ACTION_IDS = [
@@ -75,13 +73,12 @@ export interface Effect {
 
 export interface DecisionResult {
   id: string;
-  mode: Mode;
   source: DecisionSource;
-  /** Model name returned by Jev, or "simulator" in demo mode. */
+  /** Model name returned by Jev. */
   model: string;
-  /** Exactly what was (or, in demo mode, would be) sent to Jev. */
+  /** Exactly what was sent to Jev. */
   request: { model: string; state: unknown; questions: Record<string, Question> };
-  /** The answers object, verbatim from Jev in live mode. */
+  /** The answers object, verbatim from Jev. */
   response: SystemOneResponse;
   candidates: Candidate[];
   effect: Effect;
@@ -101,33 +98,10 @@ export interface ChatTurn {
 
 export interface DecideRequestBody {
   message: string;
-  mode: Mode;
   world: World;
   /** Present when the request comes from the 2D digital twin. */
   twin?: TwinContext;
   history?: ChatTurn[];
-}
-
-export interface ReplyRequestBody {
-  message: string;
-  mode: Mode;
-  history?: ChatTurn[];
-  decision: {
-    source: DecisionSource;
-    intent: string;
-    intentConfidence: number;
-    effect: Pick<Effect, "action" | "label" | "priority" | "directive" | "constraints">;
-  };
-}
-
-export type ReplySource = "generated" | "scripted";
-
-export interface ReplyResult {
-  text: string;
-  source: ReplySource;
-  model?: string;
-  /** Why a scripted reply was used, when applicable. */
-  note?: string;
 }
 
 export interface ApiErrorBody {
@@ -136,7 +110,6 @@ export interface ApiErrorBody {
 
 export interface StatusBody {
   jev: { configured: boolean; model: string };
-  replies: { configured: boolean; model: string };
 }
 
 export const MAX_MESSAGE_CHARS = 4000;

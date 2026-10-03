@@ -1,4 +1,4 @@
-import type { ApiErrorBody, ChatTurn, Mode } from "./decision/contracts";
+import type { ApiErrorBody, ChatTurn } from "./decision/contracts";
 import { MAX_MESSAGE_CHARS } from "./decision/contracts";
 
 export function errorResponse(status: number, code: string, message: string, retryable = false, detail?: unknown) {
@@ -21,9 +21,6 @@ export function parseMessage(v: unknown): string | null {
   return t && t.length <= MAX_MESSAGE_CHARS ? t : null;
 }
 
-export function parseMode(v: unknown): Mode | null {
-  return v === "live" || v === "demo" ? v : null;
-}
 
 export function parseHistory(v: unknown): ChatTurn[] {
   if (!Array.isArray(v)) return [];

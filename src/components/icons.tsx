@@ -32,16 +32,29 @@ export const Cross = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-export const Flask = (p: SVGProps<SVGSVGElement>) => (
+
+
+export const Bot = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
-    <path d="M9 3h6" />
-    <path d="M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3" />
-    <path d="M7 15h10" />
+    <rect x="4" y="8" width="16" height="12" rx="3" />
+    <path d="M12 8V4" />
+    <circle cx="12" cy="3.5" r="1" />
+    <path d="M9 13v1.5M15 13v1.5" />
+    <path d="M2 13v3M22 13v3" />
   </svg>
 );
 
-export const Bolt = (p: SVGProps<SVGSVGElement>) => (
+export const Gear = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
-    <path d="M13 2 4 14h7l-1 8 9-12h-7z" />
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+  </svg>
+);
+
+export const Help = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="9.5" />
+    <path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.2-2.5 3.9" />
+    <circle cx="12" cy="17.2" r="0.6" fill="currentColor" />
   </svg>
 );

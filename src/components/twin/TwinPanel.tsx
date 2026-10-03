@@ -42,10 +42,10 @@ export function StatusChip({ status }: { status: MissionStatus }) {
 function SourceTag({ d }: { d: DecisionSummary | undefined }) {
   if (!d) return null;
   if (d.source === "rule") return <span className="tag rule" title="Deterministic application logic, not a model output">rule</span>;
-  return d.source === "jev" ? (
-    <span className="tag live" title="Returned by Jev">model · jev</span>
-  ) : (
-    <span className="tag sim" title="Demo heuristic, not Jev">model · simulated</span>
+  return (
+    <span className="tag live" title="Returned by Jev">
+      model · jev
+    </span>
   );
 }
 
@@ -80,7 +80,7 @@ export default function TwinPanel({ mission: m, motion, speed, onClarify, onRetr
     <div className="twin-panel">
       <div className="card telemetry-card">
         <div className="card-head">
-          <span className="card-title telemetry">Execution · simulated</span>
+          <span className="card-title telemetry">Execution</span>
           <span className={`m-chip ${motion.status === "moving" ? "live" : motion.status === "arrived" ? "ok" : motion.status === "stopped" ? "warn" : "muted"}`}>
             {motion.status}
           </span>
@@ -103,8 +103,8 @@ export default function TwinPanel({ mission: m, motion, speed, onClarify, onRetr
 
       {!m ? (
         <div className="card inspector-idle">
-          Ask Marty to go somewhere, e.g. <b>“Go to Griffey.”</b> The trace shows how the request is interpreted, which card
-          it resolves to, the planned route and the simulated execution.
+          Tell Marty where to go. You&apos;ll see how the request is interpreted, which card it resolves to, the planned
+          route and Marty&apos;s progress.
         </div>
       ) : (
         <div className="card mission-card" key={m.id}>
@@ -236,7 +236,7 @@ export default function TwinPanel({ mission: m, motion, speed, onClarify, onRetr
                 </ul>
               )}
               <p className="card-sub" style={{ margin: "8px 0 0" }}>
-                {m.decision.source === "jev" ? `Values exactly as returned by ${m.decision.model}` : "Demo-mode heuristic values, not Jev"}
+                {`Values exactly as returned by ${m.decision.model}`}
                 {m.decision.latencyMs !== undefined ? ` · ${m.decision.latencyMs} ms` : ""}
               </p>
             </details>

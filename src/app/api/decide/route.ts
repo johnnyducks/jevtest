@@ -1,6 +1,6 @@
 import { JevError } from "@/lib/jev/client";
 import { decide } from "@/lib/decision/engine";
-import { errorResponse, parseHistory, parseMessage, parseMode, readJson } from "@/lib/http";
+import { errorResponse, parseHistory, parseMessage, readJson } from "@/lib/http";
 import { parseWorld } from "@/lib/marty/world";
 import { parseTwin } from "@/lib/twin/context";
 
@@ -19,12 +19,10 @@ const STATUS: Record<string, number> = {
 export async function POST(req: Request) {
   const body = await readJson(req);
   const message = parseMessage(body?.message);
-  const mode = parseMode(body?.mode);
   if (!message) return errorResponse(400, "bad_request", "Message must be 1–4000 characters.");
-  if (!mode) return errorResponse(400, "bad_request", 'Mode must be "demo" or "live".');
 
   try {
-    const result = await decide(message, mode, parseWorld(body?.world), parseHistory(body?.history), parseTwin(body?.twin));
+    const result = await decide(message, parseWorld(body?.world), parseHistory(body?.history), parseTwin(body?.twin));
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (err instanceof JevError) {
