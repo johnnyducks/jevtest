@@ -21,11 +21,12 @@ Requires Node 20.9+. A Jev API key is required. Without one, Marty answers that 
 | `JEV_API_BASE` | no | `https://api.typesafe.ai` | Override for a proxy |
 | `OPENAI_API_KEY` | no | — | Marty's chat lines, written in character (built-in lines otherwise) |
 | `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's lines |
+| `CARDSIGHT_API_KEY` | no | — | Real card images from [CardSight AI](https://cardsight.ai) (`CARDSIGHTAI_API_KEY` also accepted; `CARDSIGHT_API_BASE` overrides the URL) |
 | `OPERATOR_KEY` | no | — | Locks the gear-menu controls (stop, resume, dock, reset, placement, speed, battery) behind a key. Without it, anyone who opens the page can use them |
 | `WIKIPEDIA_ENABLED` | no | `true` | Set to `false` to use Lahman data only |
 | `WIKIPEDIA_USER_AGENT` | no | `MartyLive/0.1 (…)` | User-Agent sent to the Wikipedia API (Wikimedia asks for contact details) |
 
-Keys are read only in server code (`src/lib/jev/client.ts`, `src/lib/voice/openai.ts`, `src/lib/live/server.ts`) and never reach the browser. The bot icon in the header shows which models are in use.
+Keys are read only in server code (`src/lib/jev/client.ts`, `src/lib/voice/openai.ts`, `src/lib/live/server.ts`, `src/lib/cardsight/client.ts`) and never reach the browser. The bot icon in the header shows which models are in use.
 
 ## How it works
 
@@ -103,6 +104,18 @@ The gear icon on the map has Stop, Resume (finishes the remaining stops), Dock, 
 | What Marty says | OpenAI if configured, else built-in lines. Grounded in the decision's facts and reasons | `lib/voice/openai.ts`, `lib/live/lines.ts` |
 
 The text model never decides anything. It phrases what Jev and the rules already decided, and its prompt forbids inventing reasons, numbers or points. Built-in lines are tagged **built-in** in the chat.
+
+### Real card images (CardSight AI)
+
+With `CARDSIGHT_API_KEY` set, each card in the room is linked to the real card in the [CardSight AI](https://cardsight.ai) catalog, and its front image is shown:
+- **2D:** hover a card for a preview with its details; click still sends Marty. On a phone, tapping a card opens it full size, with a **Send Marty** button.
+- **3D / FPV:** the real image replaces the drawn placeholder on the wall, at the card's real proportions.
+
+**How cards are matched** (`lib/cardsight/match.ts`): each card has a search hint with player, year, release and the printed card number, e.g. 1952 Topps #311 for Mantle and 1982 Topps Traded #98T for Ripken. The app searches the catalog and accepts a result only if the name, year and release agree. A matching card number makes it an **exact** match; without a number to check, as with the T206 Wagner, it's labelled a **likely** match. If nothing certain turns up, the card keeps its placeholder and shows "No certain match": the app never guesses. To pin a specific catalog card, put its CardSight UUID in that card's hint as `id`.
+
+The search runs once per card. Results are saved to `data/cardsight/matches.json`; delete that file to search again. Images are fetched by the server, cached in `.cache/cardsight/`, and served from `/api/cards/<card id>/image`, so the key never reaches the browser. The image route only serves the room's own cards, so the app can't be used to pull arbitrary images on your key.
+
+**Card backs:** CardSight provides one image per card, the front. To show a back, or to replace a front, drop your own image in `public/cards/`, e.g. `mantle-52-back.jpg` (see `public/cards/README.md`). The 2D card view then shows both sides, with a flip button on phones.
 
 ### 3D and first-person views
 
@@ -187,6 +200,7 @@ src/
   lib/decision/       batch.ts: Jev batch arbitration + rules; engine/policy/questions: single-request engine (/api/decide)
   lib/jev/            Jev API types (from the published OpenAPI spec) + server-only client
   lib/game/           points, bonuses, leaderboard
+  lib/cardsight/      CardSight AI client (server), strict card matching, image cache + local overrides
   lib/twin/           environment & cards, geometry, occupancy grid, A*, resolution, typo matching,
                       multi-stop routes, battery, motion (PoseSource + SimulatedMotion), single-user controller
   lib/voice/          Marty's voice: persona + OpenAI calls (server), built-in lines
@@ -198,6 +212,7 @@ src/
   app/api/live/operator POST { action, key? }: stop, resume, dock, reset, place, rotate, speed, battery
   app/api/decide      POST: one message + twin context → DecisionResult (single-user engine, still available)
   app/api/reply       POST: outcome facts + recent chat → Marty's reply
+  app/api/cards       GET: card artwork for the room (CardSight link + image URLs); /api/cards/<id>/image proxies the front
   app/api/status      GET: which models are configured, whether an operator key is required (no secrets)
   components/         Studio (header), Popover, live/LiveView + LiveChat + useLive, twin/TwinMap (SVG),
                       three/Room3D (3D observer + FPV, loaded on demand)

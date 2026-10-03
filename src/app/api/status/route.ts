@@ -2,6 +2,7 @@ import type { StatusBody } from "@/lib/decision/contracts";
 import { jevConfig } from "@/lib/jev/client";
 import { voiceConfig } from "@/lib/voice/openai";
 import { knowledgeStatus } from "@/lib/baseball/server";
+import { cardsightConfig } from "@/lib/cardsight/client";
 import { operatorKeyRequired } from "@/lib/live/server";
 
 export const runtime = "nodejs";
@@ -16,6 +17,7 @@ export function GET() {
     voice: { configured: voice.configured, model: voice.model },
     knowledge: knowledgeStatus(),
     operator: { keyRequired: operatorKeyRequired() },
+    cards: { configured: cardsightConfig().configured },
   };
   return Response.json(body, { headers: { "Cache-Control": "no-store" } });
 }

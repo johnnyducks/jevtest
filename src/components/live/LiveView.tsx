@@ -4,10 +4,11 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import type { LiveSnapshot } from "@/lib/live/types";
 import { HANDLE } from "@/lib/live/types";
-import { ENVIRONMENT } from "@/lib/twin/environment";
+import { type Card, ENVIRONMENT } from "@/lib/twin/environment";
 import { makeTransform } from "@/lib/twin/geometry";
 import { buildGrid } from "@/lib/twin/grid";
 import { Gear, Help, Send } from "../icons";
+import { CardHover, CardModal, useCardArt } from "../cards/CardArt";
 import Popover from "../Popover";
 import TwinMap from "../twin/TwinMap";
 import LiveChat from "./LiveChat";
@@ -130,6 +131,9 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   const [notice, setNotice] = useState<{ kind: "info" | "warn"; text: string } | null>(null);
   const [showClearance, setShowClearance] = useState(true);
   const [sending, setSending] = useState(false);
+  const art = useCardArt();
+  const [hoverCard, setHoverCard] = useState<{ card: Card; at: { x: number; y: number } } | null>(null);
+  const [openCard, setOpenCard] = useState<Card | null>(null);
 
   useEffect(() => {
     if (!notice) return;
@@ -198,6 +202,8 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
             showClearance={showClearance}
             onPlace={canOperate ? (p) => void op({ action: "place", x: p.x, y: p.y }) : undefined}
             onCardGo={(c) => (handle ? void send(`Go to ${c.name}`) : setDraft(`Go to ${c.name}`))}
+            onCardHover={(c, at) => setHoverCard(c ? { card: c, at } : null)}
+            onCardInspect={(c) => setOpenCard(c)}
           />
           ) : (
             <Room3D
@@ -208,6 +214,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
               bonuses={snap.game.bonuses}
               cardPoints={snap.game.cardPoints}
               mode={view}
+              art={art}
               onCardGo={(c) => (handle ? void send(`Go to ${c.name}`) : setDraft(`Go to ${c.name}`))}
             />
           )}
@@ -234,7 +241,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
                 <li>Jev reads everyone&apos;s messages and picks what to do. Safety rules can veto it.</li>
                 <li>You score a card&apos;s points when Marty visits it for you. Bonuses pop up now and then.</li>
                 <li>Battery drains with distance. Marty recharges at the dock.</li>
-                <li>Click a card on the map to request it.</li>
+                <li>Hover a card to see the real card; click to request it. On a phone, tap a card to see it, then send Marty from there.</li>
                 <li>2D / 3D / FPV switches the view. 3D: drag to orbit, scroll to zoom. FPV is Marty&apos;s own camera.</li>
               </ul>
             </Popover>
@@ -399,6 +406,27 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
           </form>
         )}
       </aside>
+
+      {hoverCard && view === "2d" && (
+        <CardHover
+          card={hoverCard.card}
+          art={art[hoverCard.card.id]}
+          at={hoverCard.at}
+          points={(snap.game.cardPoints[hoverCard.card.id] ?? 0) + (snap.game.bonuses.find((b) => b.cardId === hoverCard.card.id)?.points ?? 0)}
+        />
+      )}
+      {openCard && (
+        <CardModal
+          card={openCard}
+          art={art[openCard.id]}
+          onClose={() => setOpenCard(null)}
+          onGo={() => {
+            setOpenCard(null);
+            if (handle) void send(`Go to ${openCard.name}`);
+            else setDraft(`Go to ${openCard.name}`);
+          }}
+        />
+      )}
     </div>
   );
 }

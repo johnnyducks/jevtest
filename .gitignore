@@ -11,3 +11,6 @@ npm-debug.log*
 
 # Wikipedia summary cache
 .cache/
+
+# CardSight AI matches (written by the app on first run)
+data/cardsight/

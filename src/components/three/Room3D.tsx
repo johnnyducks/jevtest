@@ -7,10 +7,11 @@
  * session's state), mapped through lib/twin/space3d.ts.
  */
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Bonus } from "@/lib/game/game";
+import type { CardArt } from "@/lib/cardsight/types";
 import type { PublicTrip } from "@/lib/live/types";
 import type { Card, Environment, Obstacle, Pose } from "@/lib/twin/environment";
 import type { MotionStatus } from "@/lib/twin/motion";
@@ -26,6 +27,8 @@ interface Props {
   bonuses: Bonus[];
   cardPoints: Record<string, number>;
   mode: CameraMode;
+  /** Real card images (CardSight AI / local), by card id. Missing → drawn placeholder. */
+  art?: Record<string, CardArt>;
   onCardGo: (card: Card) => void;
 }
 
@@ -260,8 +263,42 @@ function Ramps({ env }: { env: Environment }) {
   );
 }
 
-function CardFrame({ env, card, bonus, target, onGo }: { env: Environment; card: Card; bonus: boolean; target: boolean; onGo: (c: Card) => void }) {
-  const tex = useMemo(() => cardTexture(card), [card]);
+/** The real card image when there is one, else the drawn placeholder. Keeps the image's own proportions. */
+function useCardFace(card: Card, src: string | null | undefined) {
+  const placeholder = useMemo(() => cardTexture(card), [card]);
+  const [face, setFace] = useState<{ tex: THREE.Texture; aspect: number } | null>(null);
+  useEffect(() => {
+    if (!src) {
+      setFace(null);
+      return;
+    }
+    let alive = true;
+    let loaded: THREE.Texture | null = null;
+    new THREE.TextureLoader().load(
+      src,
+      (t) => {
+        loaded = t;
+        if (!alive) return t.dispose();
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 8;
+        const img = t.image as { width?: number; height?: number };
+        setFace({ tex: t, aspect: img.width && img.height ? img.width / img.height : CARD_SIZE.w / CARD_SIZE.h });
+      },
+      undefined,
+      () => alive && setFace(null), // image failed: keep the placeholder
+    );
+    return () => {
+      alive = false;
+      loaded?.dispose();
+    };
+  }, [src]);
+  return face ?? { tex: placeholder, aspect: CARD_SIZE.w / CARD_SIZE.h };
+}
+
+function CardFrame({ env, card, src, bonus, target, onGo }: { env: Environment; card: Card; src?: string | null; bonus: boolean; target: boolean; onGo: (c: Card) => void }) {
+  const { tex, aspect } = useCardFace(card, src);
+  // Same height for every card; width follows the real card (a T206 is narrower than a modern card).
+  const w = Math.min(CARD_SIZE.w * 1.15, CARD_SIZE.h * aspect);
   const place = useMemo(() => cardPlacement(env, card), [env, card]);
   const rim = target ? COLORS.accent : bonus ? COLORS.gold : "#5b4a1e";
   const click = (e: ThreeEvent<MouseEvent>) => {
@@ -271,7 +308,7 @@ function CardFrame({ env, card, bonus, target, onGo }: { env: Environment; card:
   return (
     <group position={place.center} rotation-y={place.yaw}>
       <mesh position={[0, 0, -0.006]} castShadow>
-        <boxGeometry args={[CARD_SIZE.w + 0.03, CARD_SIZE.h + 0.03, 0.012]} />
+        <boxGeometry args={[w + 0.03, CARD_SIZE.h + 0.03, 0.012]} />
         <meshStandardMaterial color={rim} emissive={rim} emissiveIntensity={target || bonus ? 0.45 : 0.1} />
       </mesh>
       <mesh
@@ -282,8 +319,9 @@ function CardFrame({ env, card, bonus, target, onGo }: { env: Environment; card:
         }}
         onPointerOut={() => (document.body.style.cursor = "")}
       >
-        <planeGeometry args={[CARD_SIZE.w, CARD_SIZE.h]} />
-        <meshStandardMaterial map={tex} roughness={0.55} />
+        <planeGeometry args={[w, CARD_SIZE.h]} />
+        {/* Lit like a display case, so the card reads on walls that face away from the main light. */}
+        <meshStandardMaterial map={tex} emissiveMap={tex} emissive="#ffffff" emissiveIntensity={0.42} roughness={0.55} />
       </mesh>
     </group>
   );
@@ -503,7 +541,7 @@ function Lights({ env }: { env: Environment }) {
 }
 
 /** Memoized: the pose changes every frame but is read through a ref, so the scene itself only re-renders when the trip, bonuses or mode change. */
-const Scene = memo(function Scene({ env, poseRef, trip, bonuses, mode, onCardGo, slots }: Omit<Props, "pose" | "status" | "cardPoints"> & { poseRef: React.RefObject<Pose>; slots: React.RefObject<LabelSlots> }) {
+const Scene = memo(function Scene({ env, poseRef, trip, bonuses, mode, art, onCardGo, slots }: Omit<Props, "pose" | "status" | "cardPoints"> & { poseRef: React.RefObject<Pose>; slots: React.RefObject<LabelSlots> }) {
   const bonusIds = new Set(bonuses.map((b) => b.cardId));
   const targetIds = new Set((trip?.status === "running" ? trip.stops : []).filter((s) => s.cardId && !s.done).map((s) => s.cardId!));
   return (
@@ -517,7 +555,7 @@ const Scene = memo(function Scene({ env, poseRef, trip, bonuses, mode, onCardGo,
       <Ramps env={env} />
       <Dock env={env} />
       {env.cards.map((c) => (
-        <CardFrame key={c.id} env={env} card={c} bonus={bonusIds.has(c.id)} target={targetIds.has(c.id)} onGo={onCardGo} />
+        <CardFrame key={c.id} env={env} card={c} src={art?.[c.id]?.front} bonus={bonusIds.has(c.id)} target={targetIds.has(c.id)} onGo={onCardGo} />
       ))}
       <Route trip={trip} />
       <Marty poseRef={poseRef} env={env} visible={mode === "orbit"} />
@@ -554,7 +592,7 @@ export default function Room3D(props: Props) {
         }}
         fallback={<div className="three-fallback mono">3D needs WebGL, which this browser doesn&apos;t provide. The 2D map still works.</div>}
       >
-        <Scene env={env} poseRef={poseRef} trip={trip} bonuses={bonuses} mode={mode} onCardGo={onGo} slots={slots} />
+        <Scene env={env} poseRef={poseRef} trip={trip} bonuses={bonuses} mode={mode} art={props.art} onCardGo={onGo} slots={slots} />
       </Canvas>
 
       <div className="three-labels" aria-hidden>

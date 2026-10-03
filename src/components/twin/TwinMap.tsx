@@ -23,13 +23,18 @@ interface Props {
   /** Drag-to-place, when the viewer may operate Marty. */
   onPlace?: (pose: Pose) => void;
   onCardGo: (card: Card) => void;
+  /** Pointer over a card (null when it leaves), with screen coordinates, for a preview. */
+  onCardHover?: (card: Card | null, at: { x: number; y: number }) => void;
+  /** Tap on a touch screen: open the card instead of sending Marty straight away. */
+  onCardInspect?: (card: Card) => void;
 }
 
 const fmt = (n: number) => n.toFixed(2);
 
-export default function TwinMap({ env, grid, view, pose, status: motionStatus, trip, bonuses, cardPoints, showClearance, onPlace, onCardGo }: Props) {
+export default function TwinMap({ env, grid, view, pose, status: motionStatus, trip, bonuses, cardPoints, showClearance, onPlace, onCardGo, onCardHover, onCardInspect }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Card | null>(null);
+  const lastPointer = useRef("mouse");
   const [drag, setDrag] = useState<{ pos: Vec; reason: string | null } | null>(null);
   const S = view.toScreen;
   const L = view.len;
@@ -252,9 +257,22 @@ export default function TwinMap({ env, grid, view, pose, status: motionStatus, t
           <g
             key={c.id}
             className={`card${isTarget ? " target" : ""}${hover?.id === c.id ? " hover" : ""}`}
-            onPointerEnter={() => setHover(c)}
-            onPointerLeave={() => setHover((h) => (h?.id === c.id ? null : h))}
-            onClick={() => onCardGo(c)}
+            onPointerEnter={(e) => {
+              if (e.pointerType === "touch") return;
+              setHover(c);
+              onCardHover?.(c, { x: e.clientX, y: e.clientY });
+            }}
+            onPointerLeave={() => {
+              setHover((h) => (h?.id === c.id ? null : h));
+              onCardHover?.(null, { x: 0, y: 0 });
+            }}
+            onPointerUp={(e) => {
+              lastPointer.current = e.pointerType;
+            }}
+            onClick={() => {
+              if (lastPointer.current === "touch" && onCardInspect) onCardInspect(c);
+              else onCardGo(c);
+            }}
             role="button"
             tabIndex={0}
             aria-label={`${c.name} card. Click to ask Marty to go there.`}
@@ -318,7 +336,7 @@ export default function TwinMap({ env, grid, view, pose, status: motionStatus, t
       })()}
 
       {/* Hover tooltip */}
-      {hover && (() => {
+      {hover && !onCardHover && (() => {
         const p = S(hover.position);
         const w = 172;
         const h = 62;

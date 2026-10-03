@@ -55,6 +55,14 @@ export default function Studio() {
             </span>
           </div>
           <div className="pop-row" style={{ marginTop: 10 }}>
+            <span className={`dot ${status?.cards?.configured ? "on" : ""}`} />
+            <span>
+              <b>Card images</b> · CardSight AI
+              <span className="pop-sub">Links each card in the room to the real card in CardSight&apos;s catalog and shows its front.</span>
+              {status && !status.cards?.configured && <span className="pop-warn">Set CARDSIGHT_API_KEY to show real card images.</span>}
+            </span>
+          </div>
+          <div className="pop-row" style={{ marginTop: 10 }}>
             <span className={`dot ${status?.knowledge.available ? "on" : ""}`} />
             <span>
               <b>Baseball knowledge</b>

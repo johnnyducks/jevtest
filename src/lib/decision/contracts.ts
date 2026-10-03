@@ -114,6 +114,8 @@ export interface StatusBody {
   knowledge: { available: boolean; version: string | null; seasonsThrough: number | null; wikipedia: boolean };
   /** Whether operator controls need OPERATOR_KEY. */
   operator: { keyRequired: boolean };
+  /** CardSight AI card images. */
+  cards: { configured: boolean };
 }
 
 export const MAX_MESSAGE_CHARS = 4000;
