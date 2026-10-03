@@ -40,24 +40,37 @@ export async function generateReply(body: ReplyRequestBody): Promise<ReplyResult
   const history = (body.history ?? []).slice(-8).map((t) => ({ role: t.role, content: t.text }) as const);
   const { effect, intent, intentConfidence } = body.decision;
 
+  const params = {
+    model: cfg.model,
+    max_tokens: 1024,
+    output_config: { effort: "low" as const },
+    system: SYSTEM,
+    messages: [
+      ...mergeRoles(history),
+      {
+        role: "user" as const,
+        content: `${body.message}\n\n<operator_directive>\nSelected action: ${effect.label} (${effect.priority}). Intent: ${intent} (${Math.round(
+          intentConfidence * 100,
+        )}% confidence).\n${effect.directive}\n</operator_directive>`,
+      },
+    ],
+  };
+
   try {
-    const response = await client.beta.messages.create({
-      model: cfg.model,
-      max_tokens: 1024,
-      output_config: { effort: "low" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      system: SYSTEM,
-      messages: [
-        ...mergeRoles(history),
-        {
-          role: "user",
-          content: `${body.message}\n\n<operator_directive>\nSelected action: ${effect.label} (${effect.priority}). Intent: ${intent} (${Math.round(
-            intentConfidence * 100,
-          )}% confidence).\n${effect.directive}\n</operator_directive>`,
-        },
-      ],
-    });
+    let response;
+    try {
+      // Server-side refusal fallback (beta). Not every account has it enabled,
+      // so a 400 here is retried once as a plain request without it.
+      response = await client.beta.messages.create({
+        ...params,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+      });
+    } catch (err) {
+      if (!(err instanceof Anthropic.BadRequestError)) throw err;
+      console.warn(`Reply: request with fallbacks rejected (${apiMessage(err)}); retrying without them.`);
+      response = await client.messages.create(params);
+    }
     if (response.stop_reason === "refusal") {
       throw new ReplyError("refusal", "The text model declined to answer this message.", false);
     }
@@ -69,8 +82,9 @@ export async function generateReply(body: ReplyRequestBody): Promise<ReplyResult
     return { text, source: "claude", model: response.model };
   } catch (err) {
     if (err instanceof ReplyError) throw err;
+    if (err instanceof Anthropic.APIError) console.error(`Reply failed: HTTP ${err.status} ${apiMessage(err)}`);
     if (err instanceof Anthropic.AuthenticationError) {
-      throw new ReplyError("unauthorized", "Anthropic rejected the API key.", false);
+      throw new ReplyError("unauthorized", "Anthropic rejected the API key. Check ANTHROPIC_API_KEY in .env.local.", false);
     }
     if (err instanceof Anthropic.RateLimitError) {
       throw new ReplyError("rate_limited", "Text model rate limit reached.", true);
@@ -78,11 +92,29 @@ export async function generateReply(body: ReplyRequestBody): Promise<ReplyResult
     if (err instanceof Anthropic.APIConnectionError) {
       throw new ReplyError("network", "Could not reach the text model.", true);
     }
+    if (err instanceof Anthropic.NotFoundError) {
+      throw new ReplyError("model_not_found", `Model "${cfg.model}" is not available to this API key. Check ANTHROPIC_MODEL.`, false);
+    }
     if (err instanceof Anthropic.APIError) {
-      throw new ReplyError("upstream", `Text model error (HTTP ${err.status ?? "?"}).`, (err.status ?? 500) >= 500);
+      const msg = apiMessage(err);
+      if (/credit balance/i.test(msg)) {
+        throw new ReplyError(
+          "no_credit",
+          "Your Anthropic account has no credit. Add some under Billing at console.anthropic.com, then retry.",
+          false,
+        );
+      }
+      throw new ReplyError("upstream", `Text model error (HTTP ${err.status ?? "?"}): ${msg}`, (err.status ?? 500) >= 500);
     }
     throw new ReplyError("unknown", "Reply generation failed.", true);
   }
+}
+
+/** Anthropic's own error text (never contains the API key). */
+function apiMessage(err: InstanceType<typeof Anthropic.APIError>): string {
+  const body = err.error as { error?: { message?: unknown } } | undefined;
+  const m = body?.error?.message;
+  return (typeof m === "string" ? m : err.message).slice(0, 300);
 }
 
 /** The Messages API expects alternating roles starting with "user". */
