@@ -39,7 +39,13 @@ export function nextWorld(world: World, effect: Effect, candidates: Candidate[],
       replace("Revisit a popular area");
       break;
     case "navigate":
+    case "navigate_card":
+    case "navigate_nearest":
+    case "navigate_area":
       replace(`Navigate: ${excerpt(message)}`);
+      break;
+    case "stop":
+      if (w.mission) w.mission.status = "idle";
       break;
     case "inspect_object":
       replace(`Search: ${excerpt(message)}`);

@@ -4,6 +4,7 @@
  */
 import type { ChoiceQuestion, NoulQuestion, ScoreQuestion } from "../jev/types";
 import type { World } from "../marty/world";
+import { catalogForModel, type TwinContext } from "../twin/context";
 import type { Candidate, ChatTurn } from "./contracts";
 
 export const INTENT_CRITERIA = {
@@ -38,7 +39,40 @@ export const RISK_LEVELS = [
  * Candidate actions offered to Jev. Built deterministically from the world, so
  * the options Jev ranks are exactly the ones the policy layer knows how to run.
  */
-export function buildCandidates(world: World): Candidate[] {
+/** Navigation actions offered to Jev when the request comes from the digital twin. */
+export function buildTwinCandidates(): Candidate[] {
+  return [
+    {
+      key: "navigate_card",
+      action: "navigate_card",
+      label: "Navigate to a named card",
+      description: "Drive to a specific baseball card the request names (see card_catalog).",
+    },
+    {
+      key: "navigate_nearest",
+      action: "navigate_nearest",
+      label: "Navigate to the nearest card",
+      description: "Drive to whichever card is closest to Marty right now.",
+    },
+    {
+      key: "navigate_area",
+      action: "navigate_area",
+      label: "Navigate to an area",
+      description: "Drive to a described place that is not a card, such as the other side of the room, the middle, or the dock.",
+    },
+    { key: "stop", action: "stop", label: "Stop", description: "Stop moving immediately and cancel the current navigation." },
+    { key: "converse", action: "converse", label: "Reply without moving", description: "Answer or chat with the operator; no movement needed." },
+    {
+      key: "hold_and_ask",
+      action: "hold_and_ask",
+      label: "Hold position & ask",
+      description: "Stay put and ask a clarifying question because the request or its target is unclear.",
+    },
+  ];
+}
+
+export function buildCandidates(world: World, twin?: TwinContext | null): Candidate[] {
+  if (twin) return buildTwinCandidates();
   const c: Candidate[] = [];
   if (world.mission && world.mission.status !== "docking") {
     c.push({
@@ -155,7 +189,19 @@ export function buildQuestions(candidates: Candidate[]) {
 }
 
 /** State sent to Jev: the message, the world snapshot, and a short context window. */
-export function buildState(message: string, world: World, history: ChatTurn[] = []) {
+export function buildState(message: string, world: World, history: ChatTurn[] = [], twin?: TwinContext | null) {
+  if (twin) {
+    return {
+      robot: "Marty, a small Moorebot Scout robot in a simulated 2D digital twin of a fictional card room (no physical robot connected)",
+      latest_operator_message: message,
+      robot_pose: { x_m: twin.pose.x, y_m: twin.pose.y, heading_deg: twin.pose.headingDeg },
+      moving: twin.moving,
+      current_destination: twin.destination,
+      card_catalog: catalogForModel(),
+      named_areas: ["other side of the room", "middle of the room", "charging dock"],
+      battery_percent: world.battery,
+    };
+  }
   return {
     robot: "Marty, a small indoor exploration robot streamed to an audience (simulated sandbox)",
     latest_operator_message: message,

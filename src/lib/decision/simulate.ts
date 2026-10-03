@@ -10,12 +10,22 @@
 import type { Answer, ChoiceAnswer, NoulAnswer, ScoreAnswer } from "../jev/types";
 import type { World } from "../marty/world";
 import type { Candidate } from "./contracts";
+import { ENVIRONMENT } from "../twin/environment";
 import { INTENT_CRITERIA, RISK_LEVELS, URGENCY_LEVELS } from "./questions";
+
+/** Any catalog name or alias appears in the text (demo heuristic only). */
+const mentionsCard = (t: string) => {
+  const s = ` ${t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ")} `;
+  return ENVIRONMENT.cards.some((c) => c.aliases.some((a) => s.includes(` ${a} `)));
+};
 
 const has = (text: string, re: RegExp) => (re.test(text) ? 1 : 0);
 
 const RE = {
-  navigate: /\b(go|head|drive|move|race|navigate|backwards?|reverse|to the|route)\b/i,
+  navigate: /\b(go|head|drive|move|race|navigate|visit|take me|bring|backwards?|reverse|to the|route)\b/i,
+  nearest: /\b(nearest|closest)\b/i,
+  area: /\b(other side|opposite side|far side|across the room|middle|center|centre|dock|home|charger)\b/i,
+  stop: /\b(stop|halt|freeze|abort|hold on|wait)\b/i,
   inspect: /\b(find|inspect|look|search|check|scan|rarest|card|object)\b/i,
   mission: /\b(mission|next|what should happen|plan|priorit)/i,
   viewers: /\b(viewers?|audience|chat|votes?|poll)\b/i,
@@ -73,7 +83,7 @@ const noul = (p: number): NoulAnswer => ({ type: "noul", noul: round(clamp01(p))
 export function simulateAnswers(message: string, world: World, candidates: Candidate[]): Record<string, Answer> {
   const t = message.trim();
   const words = t.split(/\s+/).filter(Boolean).length;
-  const vague = words <= 2;
+  const vague = words <= 2 && !mentionsCard(t) && !RE.stop.test(t) && !RE.area.test(t);
   const lowBattery = world.battery < 35;
 
   const intentLogits: Record<keyof typeof INTENT_CRITERIA, number> = {
@@ -117,6 +127,18 @@ export function simulateAnswers(message: string, world: World, candidates: Candi
         break;
       case "revisit_popular_area":
         l = has(t, RE.revisit) * 1.2 + (world.poll ? (3 * world.poll.revisit) / pollTotal : 0);
+        break;
+      case "navigate_card":
+        l = (mentionsCard(t) ? 2.4 : 0) + has(t, RE.navigate) * 0.6 - has(t, RE.nearest) * 2;
+        break;
+      case "navigate_nearest":
+        l = has(t, RE.nearest) * 2.8;
+        break;
+      case "navigate_area":
+        l = has(t, RE.area) * 2.6;
+        break;
+      case "stop":
+        l = has(t, RE.stop) * 3;
         break;
       case "converse":
         l = has(t, RE.question) * 0.6;

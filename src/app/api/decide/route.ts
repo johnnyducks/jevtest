@@ -2,6 +2,7 @@ import { JevError } from "@/lib/jev/client";
 import { decide } from "@/lib/decision/engine";
 import { errorResponse, parseHistory, parseMessage, parseMode, readJson } from "@/lib/http";
 import { parseWorld } from "@/lib/marty/world";
+import { parseTwin } from "@/lib/twin/context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   if (!mode) return errorResponse(400, "bad_request", 'Mode must be "demo" or "live".');
 
   try {
-    const result = await decide(message, mode, parseWorld(body?.world), parseHistory(body?.history));
+    const result = await decide(message, mode, parseWorld(body?.world), parseHistory(body?.history), parseTwin(body?.twin));
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (err instanceof JevError) {

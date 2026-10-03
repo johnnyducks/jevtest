@@ -20,7 +20,7 @@ export const THRESHOLDS = {
 };
 
 /** Actions still permitted when the battery is critical. */
-const CRITICAL_SAFE: ActionId[] = ["return_to_dock", "hold_and_ask", "converse"];
+const CRITICAL_SAFE: ActionId[] = ["return_to_dock", "hold_and_ask", "converse", "stop"];
 /** Long excursions that low battery rules out. */
 const LONG_RANGE: ActionId[] = ["explore_new_area", "revisit_popular_area"];
 
@@ -34,6 +34,10 @@ export const ACTION_LABELS: Record<ActionId, string> = {
   continue_mission: "Continue mission",
   return_to_dock: "Return to dock & recharge",
   navigate: "Navigate",
+  navigate_card: "Navigate to card",
+  navigate_nearest: "Navigate to nearest card",
+  navigate_area: "Navigate to area",
+  stop: "Stop",
   inspect_object: "Search / inspect object",
   explore_new_area: "Explore an unmapped area",
   revisit_popular_area: "Revisit a popular area",
@@ -48,6 +52,10 @@ const DIRECTIVES: Record<ActionId, string> = {
   continue_mission: "Explain that Marty keeps going with the current mission and why.",
   return_to_dock: "Explain that Marty is heading back to recharge and what happens to the current mission.",
   navigate: "Describe where Marty will go next and how.",
+  navigate_card: "Say which card Marty is heading to.",
+  navigate_nearest: "Say that Marty is heading to the nearest card.",
+  navigate_area: "Say where in the room Marty is heading.",
+  stop: "Confirm that Marty has stopped.",
   inspect_object: "Describe what Marty will search for or inspect, and how.",
   explore_new_area: "Announce that Marty will explore somewhere new and why.",
   revisit_popular_area: "Announce that Marty will revisit a popular spot and why.",

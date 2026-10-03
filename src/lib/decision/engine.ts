@@ -7,15 +7,22 @@ import { evaluate, jevConfig, JevError } from "../jev/client";
 import type { Answer } from "../jev/types";
 import { nextWorld } from "../marty/mission";
 import type { World } from "../marty/world";
+import type { TwinContext } from "../twin/context";
 import type { ChatTurn, DecisionResult, Mode } from "./contracts";
 import { applyPolicy } from "./policy";
 import { buildCandidates, buildQuestions, buildState } from "./questions";
 import { simulateAnswers } from "./simulate";
 
-export async function decide(message: string, mode: Mode, world: World, history: ChatTurn[] = []): Promise<DecisionResult> {
-  const candidates = buildCandidates(world);
+export async function decide(
+  message: string,
+  mode: Mode,
+  world: World,
+  history: ChatTurn[] = [],
+  twin: TwinContext | null = null,
+): Promise<DecisionResult> {
+  const candidates = buildCandidates(world, twin);
   const questions = buildQuestions(candidates);
-  const state = buildState(message, world, history);
+  const state = buildState(message, world, history, twin);
   const started = performance.now();
 
   let source: DecisionResult["source"];
@@ -51,6 +58,7 @@ export async function decide(message: string, mode: Mode, world: World, history:
     response,
     candidates,
     effect,
+    twin: !!twin,
     world,
     worldAfter: nextWorld(world, effect, candidates, message),
     latencyMs: Math.round(performance.now() - started),

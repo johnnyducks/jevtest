@@ -4,6 +4,7 @@
  */
 import type { Question, SystemOneResponse } from "../jev/types";
 import type { World } from "../marty/world";
+import type { TwinContext } from "../twin/context";
 
 export type Mode = "demo" | "live";
 
@@ -15,6 +16,10 @@ export const ACTION_IDS = [
   "continue_mission",
   "return_to_dock",
   "navigate",
+  "navigate_card",
+  "navigate_nearest",
+  "navigate_area",
+  "stop",
   "inspect_object",
   "explore_new_area",
   "revisit_popular_area",
@@ -80,6 +85,8 @@ export interface DecisionResult {
   response: SystemOneResponse;
   candidates: Candidate[];
   effect: Effect;
+  /** True when this decision used the digital-twin navigation schema. */
+  twin: boolean;
   /** Scenario state the decision was made against, and the state after applying it. */
   world: World;
   worldAfter: World;
@@ -96,6 +103,8 @@ export interface DecideRequestBody {
   message: string;
   mode: Mode;
   world: World;
+  /** Present when the request comes from the 2D digital twin. */
+  twin?: TwinContext;
   history?: ChatTurn[];
 }
 

@@ -8,6 +8,7 @@ import { DEFAULT_WORLD, SCENARIOS, type World } from "@/lib/marty/world";
 import Chat from "./Chat";
 import { Bolt, Flask, Logo } from "./icons";
 import Inspector from "./Inspector";
+import TwinView from "./twin/TwinView";
 import type { Turn } from "./types";
 
 const STORAGE_KEY = "marty-the-brain:v1";
@@ -54,6 +55,8 @@ export default function Studio() {
   const [status, setStatus] = useState<StatusBody | null>(null);
   const [selectedId, setSelectedId] = useState<string>();
   const [view, setView] = useState<"chat" | "inspector">("chat");
+  /** Top-level workspace: the 2D digital twin (default) or the original Brain lab. */
+  const [workspace, setWorkspace] = useState<"twin" | "lab">("twin");
   const [hydrated, setHydrated] = useState(false);
   const [restoredIds, setRestoredIds] = useState<Set<string>>(() => new Set());
   const turnsRef = useRef<Turn[]>([]);
@@ -210,6 +213,14 @@ export default function Studio() {
             <div className="brand-sub">Every message changes the mission.</div>
           </div>
         </div>
+        <div className="workspace-switch" role="tablist" aria-label="Workspace">
+          <button role="tab" aria-selected={workspace === "twin"} onClick={() => setWorkspace("twin")}>
+            Twin
+          </button>
+          <button role="tab" aria-selected={workspace === "lab"} onClick={() => setWorkspace("lab")}>
+            Brain lab
+          </button>
+        </div>
         <div className="topbar-spacer" />
         <div className="status-pills">
           <span className="pill" title="Jev decision API (server-side)">
@@ -225,7 +236,7 @@ export default function Studio() {
             NO ROBOT LINKED
           </span>
         </div>
-        {turns.length > 0 && (
+        {workspace === "lab" && turns.length > 0 && (
           <button className="btn ghost" onClick={reset} disabled={busy} title="Clear the session and restore the default mission">
             Reset
           </button>
@@ -249,7 +260,11 @@ export default function Studio() {
         </div>
       </header>
 
-      <main className="main" data-view={view}>
+      {/* Both workspaces stay mounted so switching never loses mission or chat state. */}
+      <main className="main-twin" hidden={workspace !== "twin"}>
+        <TwinView mode={mode} />
+      </main>
+      <main className="main" data-view={view} hidden={workspace !== "lab"}>
         <div className="mobile-tabs" role="tablist">
           <button role="tab" aria-selected={view === "chat"} onClick={() => setView("chat")}>
             Comms
