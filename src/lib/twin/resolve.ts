@@ -6,6 +6,7 @@
  * navigation; this module only maps words to stable IDs and points.
  */
 import { AREAS, type Card, type Environment, type Pose, type Vec } from "./environment.ts";
+import { fuzzyPhraseIn } from "./fuzzy.ts";
 import type { Grid } from "./grid.ts";
 import { nearestReachable, planPath } from "./pathfinding.ts";
 
@@ -79,7 +80,43 @@ export function resolveCardByName(env: Environment, text: string, restrictTo?: s
       options: best.map((b) => ({ id: b.card.id, name: b.card.name })).sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
-  return { status: "not_found", method: "alias match", detail: "No card in the catalog matches that name." };
+  return fuzzyCard(pool, t) ?? { status: "not_found", method: "alias match", detail: "No card in the catalog matches that name." };
+}
+
+/** Second pass for typos ("heanderson"): closest alias within a small edit distance. Ties → ambiguous. */
+function fuzzyCard(pool: Card[], normalized: string): Resolution | null {
+  const words = normalized.trim().split(" ").filter(Boolean);
+  let best: { card: Card; alias: string; matched: string; distance: number }[] = [];
+  for (const card of pool) {
+    let cardBest: { alias: string; matched: string; distance: number } | null = null;
+    for (const alias of card.aliases) {
+      const a = aliasNorm(alias).trim();
+      if (a.replace(/ /g, "").length < 4) continue;
+      const hit = fuzzyPhraseIn(words, a);
+      if (hit && hit.distance > 0 && (!cardBest || hit.distance < cardBest.distance || (hit.distance === cardBest.distance && a.length > cardBest.alias.length))) {
+        cardBest = { alias: a, ...hit };
+      }
+    }
+    if (!cardBest) continue;
+    if (!best.length || cardBest.distance < best[0].distance) best = [{ card, ...cardBest }];
+    else if (cardBest.distance === best[0].distance) best.push({ card, ...cardBest });
+  }
+  if (!best.length) return null;
+  if (best.length === 1) {
+    const { card: c, alias, matched } = best[0];
+    return {
+      status: "resolved",
+      method: "fuzzy match",
+      matched: `${matched} → ${alias}`,
+      target: { kind: "card", id: c.id, name: c.name, point: c.approach, cardPosition: c.position },
+    };
+  }
+  return {
+    status: "ambiguous",
+    method: "fuzzy match",
+    matched: best[0].matched,
+    options: best.map((b) => ({ id: b.card.id, name: b.card.name })).sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 /** Nearest card by actual route length (not straight-line), ignoring unreachable cards. */

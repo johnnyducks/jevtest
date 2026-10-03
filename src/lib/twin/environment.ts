@@ -64,6 +64,8 @@ export interface Card {
   facing: Vec;
   /** Point in free space where Marty stops to view the card. */
   approach: Vec;
+  /** Base points for visiting this card (game layer). */
+  points: number;
   player: CardPlayer;
   meta: CardMeta;
   note?: string;
@@ -73,6 +75,19 @@ export interface Area {
   id: string;
   name: string;
   aliases: string[];
+}
+
+/** A place that costs extra to visit (e.g. climbing a ramp). Marty drives to `base`, then climbs. */
+export interface SpecialPlace {
+  id: string;
+  name: string;
+  aliases: string[];
+  base: Vec;
+  /** Visual footprint on the map (not an obstacle). */
+  zone: { x: number; y: number; w: number; h: number };
+  /** Extra battery (%) and time (s) for the climb up and back down. */
+  extraBattery: number;
+  extraSeconds: number;
 }
 
 export interface Environment {
@@ -87,9 +102,25 @@ export interface Environment {
   cards: Card[];
   dock: Vec;
   defaultPose: Pose;
+  special: SpecialPlace[];
 }
 
 const APPROACH_DISTANCE = 0.55;
+
+/** Base points per card: roughly how sought-after the card is. Data, not code. */
+const CARD_POINTS: Record<string, number> = {
+  "wagner-t206": 100,
+  "mantle-52": 60,
+  "robinson-52": 50,
+  "aaron-54": 40,
+  "griffey-89": 35,
+  "henderson-80": 25,
+  "ripken-82": 25,
+  "rose-63": 25,
+  "barry-bonds-87": 20,
+  "ichiro-01": 20,
+  "bobby-bonds-69": 15,
+};
 
 function card(
   id: string,
@@ -107,6 +138,7 @@ function card(
     id,
     name,
     player,
+    points: CARD_POINTS[id] ?? 10,
     meta: { ...meta, issueYear: year, teamShown: team, seasonRepresented: null, identification: "catalog" },
     aliases: [...new Set([name.toLowerCase(), ...aliases])],
     year,
@@ -134,6 +166,17 @@ export const ENVIRONMENT: Environment = {
   resolution: 0.1,
   dock: { x: 0.9, y: 0.9 },
   defaultPose: { x: 1.2, y: 1.4, heading: 0 },
+  special: [
+    {
+      id: "mezzanine",
+      name: "the mezzanine (upstairs)",
+      aliases: ["upstairs", "mezzanine", "second floor", "upper level", "up the ramp", "the ramp"],
+      base: { x: 1.0, y: 7.2 },
+      zone: { x: 0.0, y: 6.7, w: 0.6, h: 1.3 },
+      extraBattery: 14,
+      extraSeconds: 30,
+    },
+  ],
   obstacles: [
     { id: "partition", label: "Partition wall", kind: "wall", x: 8.0, y: 1.9, w: 0.2, h: 6.1 },
     { id: "table", label: "Display table", kind: "table", x: 3.6, y: 3.2, w: 2.8, h: 1.6 },
@@ -154,6 +197,7 @@ export const ENVIRONMENT: Environment = {
     card("robinson-52", "Jackie Robinson", ["jackie", "robinson", "jackie robinson"], 1952, "Dodgers", { x: 3.5, y: 0.5 }, NORTH, { lahmanId: "robinja02", wikipediaTitle: "Jackie Robinson" }, { manufacturer: "Topps", set: "1952 Topps" }),
     card("ichiro-01", "Ichiro Suzuki", ["ichiro", "suzuki", "ichiro suzuki"], 2001, "Mariners", { x: 8.2, y: 5.0 }, EAST, { lahmanId: "suzukic01", wikipediaTitle: "Ichiro Suzuki" }, { manufacturer: null, set: null }),
     card("mantle-52", "Mickey Mantle", ["mantle", "mickey", "mickey mantle", "the mick"], 1952, "Yankees", { x: 6.2, y: 6.8 }, EAST, { lahmanId: "mantlmi01", wikipediaTitle: "Mickey Mantle" }, { manufacturer: "Topps", set: "1952 Topps" }),
+    card("rose-63", "Pete Rose", ["rose", "pete rose", "charlie hustle"], 1963, "Reds", { x: 2.4, y: 5.8 }, EAST, { lahmanId: "rosepe01", wikipediaTitle: "Pete Rose" }, { manufacturer: "Topps", set: "1963 Topps" }),
     card("wagner-t206", "Honus Wagner", ["wagner", "honus", "honus wagner", "t206"], 1909, "Pirates", { x: 11.2, y: 8 }, SOUTH, { lahmanId: "wagneho01", wikipediaTitle: "Honus Wagner" }, { manufacturer: "American Tobacco Company", set: "T206" }, "Locked inside the vault cage. No opening, so it is unreachable by design."),
   ],
 };

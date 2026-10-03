@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { StatusBody } from "@/lib/decision/contracts";
 import { Bot, Logo } from "./icons";
 import Popover from "./Popover";
-import TwinView from "./twin/TwinView";
+import LiveView from "./live/LiveView";
 
 /** App shell: brand, a bot icon listing the models in use, and the map workspace. */
 export default function Studio() {
@@ -42,7 +42,7 @@ export default function Studio() {
             <span className={`dot ${status?.jev.configured ? "on" : ""}`} />
             <span>
               <b>Jev</b> · {status ? status.jev.model : "…"}
-              <span className="pop-sub">Interprets each request and chooses Marty&apos;s action.</span>
+              <span className="pop-sub">Reads viewers&apos; messages in batches and chooses what Marty does next.</span>
               {status && !status.jev.configured && <span className="pop-warn">Not configured: set JEV_API_KEY on the server.</span>}
             </span>
           </div>
@@ -69,7 +69,7 @@ export default function Studio() {
       </header>
 
       <main className="main-twin">
-        <TwinView />
+        <LiveView keyRequired={status?.operator?.keyRequired ?? false} />
       </main>
     </div>
   );

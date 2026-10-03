@@ -145,3 +145,57 @@ async function call(cfg: ReturnType<typeof voiceConfig>, request: Record<string,
   console.error(`Marty reply failed: HTTP ${res.status} ${message}`);
   return { ok: false as const, status: res.status, message };
 }
+
+const LIVE_RULES = `
+
+LIVE SHOW: you are streamed live. Many viewers chat at once, each with a @handle. Your decision engine (Jev) reads their messages in batches and picks what you do; hard safety rules (battery reserve, trip length) can veto a pick. Viewers earn points when you visit cards for them.
+- Address viewers by @handle exactly as given. Never invent handles.
+- When explaining a decision, say what you're doing and why. For each declined request named in the FACTS, give its reason in plain words, using the numbers given (battery %, seconds). Don't invent reasons, numbers or points.
+- Never say you did something the FACTS don't say. Planned trips are plans, not done deeds.
+- Besides single cards, you can do multi-stop trips ("ripken, then bonds, then mantle"), laps around the display table or the whole room, and the mezzanine upstairs (a costly climb). Battery drains with distance; the dock recharges you.
+- Keep it to 1 to 3 sentences, sometimes 4 when explaining several requests.`;
+
+export interface SayRequest {
+  /** What this line is for. */
+  kind: "decision" | "answer" | "arrive" | "event";
+  /** Handles the line speaks to. */
+  to: string[];
+  /** Instruction for this line. */
+  instruction: string;
+  /** Ground truth the line must respect. */
+  facts: string;
+  /** Deterministic line used when no text model is configured or it fails. */
+  fallback: string;
+  knowledge?: KnowledgeBundle | null;
+  history: ChatLine[];
+}
+
+/** One line for the live show, in character, grounded in `facts`. Never throws. */
+export async function martySay(r: SayRequest): Promise<ReplyResult> {
+  const cfg = voiceConfig();
+  const fallback = (note: string): ReplyResult => ({ text: r.fallback, source: "built-in", note });
+  if (!cfg.configured) return fallback("OPENAI_API_KEY not set");
+  const messages = [
+    { role: "system", content: PERSONA + LIVE_RULES },
+    ...r.history.slice(-10).map((h) => ({ role: h.role, content: h.text })),
+    {
+      role: "user",
+      content: `${r.instruction}\n\nFACTS (from Marty's systems, ground truth):\n${r.facts}${knowledgeBlock(r.knowledge)}`,
+    },
+  ];
+  const request: Record<string, unknown> = { model: cfg.model, messages, max_completion_tokens: 1500, reasoning_effort: "low" };
+  try {
+    let res = await call(cfg, request);
+    if (!res.ok && res.status === 400 && /reasoning_effort/i.test(res.message)) {
+      delete request.reasoning_effort;
+      res = await call(cfg, request);
+    }
+    if (!res.ok) return fallback(`OpenAI error ${res.status}: ${res.message}`);
+    const choice = res.data.choices?.[0];
+    const text = (choice?.message?.content ?? "").trim();
+    if (!text || choice?.message?.refusal) return fallback("OpenAI returned no text");
+    return { text, source: "openai", model: res.data.model };
+  } catch (err) {
+    return fallback(err instanceof Error ? err.message : "OpenAI call failed");
+  }
+}

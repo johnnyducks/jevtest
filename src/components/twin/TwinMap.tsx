@@ -1,33 +1,40 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { Mission } from "@/lib/twin/controller";
+import type { Bonus } from "@/lib/game/game";
+import type { PublicTrip } from "@/lib/live/types";
 import type { Card, Environment, Pose, Vec } from "@/lib/twin/environment";
 import type { ViewTransform } from "@/lib/twin/geometry";
 import { blockReason, type Grid } from "@/lib/twin/grid";
-import type { MotionState } from "@/lib/twin/motion";
+import type { MotionStatus } from "@/lib/twin/motion";
 
 interface Props {
   env: Environment;
   grid: Grid;
   view: ViewTransform;
-  motion: MotionState;
-  /** Mission whose route/target is drawn. */
-  mission: Mission | undefined;
+  pose: Pose;
+  status: MotionStatus;
+  /** Current or last trip: its route and stops are drawn. */
+  trip: PublicTrip | null;
+  bonuses: Bonus[];
+  /** Base points available per card right now (0 while on cooldown). */
+  cardPoints: Record<string, number>;
   showClearance: boolean;
-  onPlace: (pose: Pose) => void;
+  /** Drag-to-place, when the viewer may operate Marty. */
+  onPlace?: (pose: Pose) => void;
   onCardGo: (card: Card) => void;
 }
 
 const fmt = (n: number) => n.toFixed(2);
 
-export default function TwinMap({ env, grid, view, motion, mission, showClearance, onPlace, onCardGo }: Props) {
+export default function TwinMap({ env, grid, view, pose, status: motionStatus, trip, bonuses, cardPoints, showClearance, onPlace, onCardGo }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Card | null>(null);
   const [drag, setDrag] = useState<{ pos: Vec; reason: string | null } | null>(null);
   const S = view.toScreen;
   const L = view.len;
-  const moving = motion.status === "moving";
+  const moving = motionStatus === "moving";
+  const motion = { pose, status: motionStatus };
 
   /** Pointer → world coordinates through the SVG's own CTM, so it works at any rendered size. */
   const toWorld = (e: React.PointerEvent): Vec | null => {
@@ -39,7 +46,7 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
   };
 
   const onDown = (e: React.PointerEvent) => {
-    if (moving) return;
+    if (moving || !onPlace) return;
     (e.target as Element).setPointerCapture(e.pointerId);
     setDrag({ pos: { x: motion.pose.x, y: motion.pose.y }, reason: null });
   };
@@ -51,7 +58,7 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
   const onUp = () => {
     if (!drag) return;
     const moved = Math.hypot(drag.pos.x - motion.pose.x, drag.pos.y - motion.pose.y) > 0.02;
-    if (moved) onPlace({ x: Math.round(drag.pos.x * 100) / 100, y: Math.round(drag.pos.y * 100) / 100, heading: motion.pose.heading });
+    if (moved) onPlace?.({ x: Math.round(drag.pos.x * 100) / 100, y: Math.round(drag.pos.y * 100) / 100, heading: motion.pose.heading });
     setDrag(null);
   };
 
@@ -62,13 +69,11 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
     return lines;
   }, [env]);
 
-  const plan = mission?.plan;
-  const route = plan?.status === "ok" ? plan.waypoints : [];
-  const target = mission?.target;
-  const status = mission?.status;
-  const showRoute = route.length > 1 && status && ["route_ready", "moving", "arrived", "stopped", "cancelled"].includes(status);
-  const routeDim = status === "cancelled" || status === "stopped";
-  const pts = route.map((p) => S(p));
+  const legs = trip?.legs ?? [];
+  const tripLive = trip?.status === "running";
+  const routeDim = trip?.status === "stopped" || trip?.status === "failed";
+  const bonusAt = new Map(bonuses.map((b) => [b.cardId, b]));
+  const stopCards = new Set((trip?.stops ?? []).filter((x) => x.cardId && (tripLive || !x.done)).map((x) => x.cardId!));
   const room0 = S({ x: 0, y: env.height });
   const inflation = grid.inflation;
 
@@ -188,27 +193,57 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
         );
       })()}
 
-      {/* Route */}
-      {showRoute && (
-        <g className={`route${routeDim ? " dim" : ""}${status === "arrived" ? " done" : ""}`}>
-          <polyline points={pts.map((p) => `${p.x},${p.y}`).join(" ")} className="route-line" />
-          {pts.slice(1).map((p, i) => {
-            const a = pts[i];
-            const ang = (Math.atan2(p.y - a.y, p.x - a.x) * 180) / Math.PI;
-            const mid = { x: (a.x + p.x) / 2, y: (a.y + p.y) / 2 };
-            return <path key={`ch${i}`} d="M -4 -4 L 2 0 L -4 4" transform={`translate(${mid.x} ${mid.y}) rotate(${ang})`} className="route-chevron" />;
+      {/* Special places (e.g. the ramp up to the mezzanine) */}
+      {env.special.map((sp) => {
+        const p = S({ x: sp.zone.x, y: sp.zone.y + sp.zone.h });
+        const c = S({ x: sp.zone.x + sp.zone.w / 2, y: sp.zone.y + sp.zone.h / 2 });
+        return (
+          <g key={sp.id} className="special-zone">
+            <rect x={p.x} y={p.y} width={L(sp.zone.w)} height={L(sp.zone.h)} rx={2} />
+            <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="middle" className="obstacle-label" transform={`rotate(-90 ${c.x} ${c.y})`}>
+              RAMP ↑
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Route: every leg of the current trip; finished legs dim */}
+      {trip && legs.length > 0 && (
+        <g className={`route${routeDim ? " dim" : ""}${trip.status === "done" ? " done" : ""}`}>
+          {legs.map((leg, li) => {
+            const pts = leg.path.map((p) => S(p));
+            return (
+              <g key={li} className={leg.done && tripLive ? "leg-done" : ""}>
+                <polyline points={pts.map((p) => `${p.x},${p.y}`).join(" ")} className="route-line" />
+                {pts.slice(1).map((p, i) => {
+                  const a = pts[i];
+                  const ang = (Math.atan2(p.y - a.y, p.x - a.x) * 180) / Math.PI;
+                  const mid = { x: (a.x + p.x) / 2, y: (a.y + p.y) / 2 };
+                  return <path key={`ch${i}`} d="M -4 -4 L 2 0 L -4 4" transform={`translate(${mid.x} ${mid.y}) rotate(${ang})`} className="route-chevron" />;
+                })}
+              </g>
+            );
           })}
-          {pts.slice(1, -1).map((p, i) => (
-            <circle key={`wp${i}`} cx={p.x} cy={p.y} r={3.2} className={`waypoint${motion.missionId === mission?.id && i + 1 < motion.waypoint ? " passed" : ""}`} />
-          ))}
+          {trip.stops.map((st, i) => {
+            const p = S(st.point);
+            return (
+              <g key={`st${i}`} className={`stop-pin${st.done ? " done" : ""}`}>
+                <circle cx={p.x} cy={p.y} r={8} />
+                <text x={p.x} y={p.y + 0.5} textAnchor="middle" dominantBaseline="middle">
+                  {st.done ? "✓" : i + 1}
+                </text>
+              </g>
+            );
+          })}
         </g>
       )}
-      {mission?.from && showRoute && <circle cx={S(mission.from).x} cy={S(mission.from).y} r={4} className="route-start" />}
 
       {/* Cards */}
       {env.cards.map((c) => {
         const p = S(c.position);
-        const isTarget = target?.kind === "card" && target.id === c.id;
+        const isTarget = stopCards.has(c.id);
+        const bonus = bonusAt.get(c.id);
+        const pts = (cardPoints[c.id] ?? 0) + (bonus?.points ?? 0);
         const along = Math.atan2(-c.facing.y, c.facing.x) * (180 / Math.PI); // screen angle of facing
         const lp = S({ x: c.position.x + c.facing.x * 0.32, y: c.position.y + c.facing.y * 0.32 });
         const last = (n: string) => n.replace(/ (Jr\.|Suzuki)$/, "").split(" ").at(-1)!;
@@ -232,42 +267,24 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
               {short}
             </text>
             {(isTarget || hover?.id === c.id) && <circle cx={S(c.approach).x} cy={S(c.approach).y} r={2.5} className="approach-dot" />}
-          </g>
-        );
-      })}
-
-      {/* Destination */}
-      {target && status && (() => {
-        const t = S(target.point);
-        const card = target.cardPosition ? S(target.cardPosition) : null;
-        const fail = status === "no_route";
-        return (
-          <g className={`destination${fail ? " fail" : ""}${status === "arrived" ? " arrived" : ""}`}>
-            {card && <line x1={t.x} y1={t.y} x2={card.x} y2={card.y} className="dest-tether" />}
-            {fail ? (
-              <>
-                <path d={`M ${t.x - 7} ${t.y - 7} L ${t.x + 7} ${t.y + 7} M ${t.x + 7} ${t.y - 7} L ${t.x - 7} ${t.y + 7}`} className="dest-x" />
-                <text x={t.x} y={t.y < view.pad + 60 ? t.y + 24 : t.y - 14} textAnchor="middle" className="dest-label">
-                  NO ROUTE
+            {pts > 0 && c.id !== "wagner-t206" && (
+              <g
+                className={`pts-badge${bonus ? " bonus" : ""}`}
+                transform={(() => {
+                  // Beside the card, along the wall it hangs on, so it never covers the name.
+                  const b = S({ x: c.position.x - c.facing.y * 0.42 + c.facing.x * 0.14, y: c.position.y + c.facing.x * 0.42 + c.facing.y * 0.14 });
+                  return `translate(${b.x} ${b.y})`;
+                })()}
+              >
+                <rect x={-14} y={-7} width={28} height={14} rx={7} />
+                <text textAnchor="middle" dominantBaseline="middle" y={0.5}>
+                  {pts}
                 </text>
-              </>
-            ) : (
-              <>
-                <circle cx={t.x} cy={t.y} r={11} className="dest-ring" />
-                <circle cx={t.x} cy={t.y} r={3} className="dest-dot" />
-                {status === "arrived" && (
-                  <>
-                    <circle cx={t.x} cy={t.y} r={11} className="dest-pulse" />
-                    <text x={t.x} y={t.y < view.pad + 60 ? t.y + 26 : t.y - 18} textAnchor="middle" className="dest-label ok">
-                      ARRIVED
-                    </text>
-                  </>
-                )}
-              </>
+              </g>
             )}
           </g>
         );
-      })()}
+      })}
 
       {/* Drag preview */}
       {drag && (
@@ -285,7 +302,7 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
         const r = L(env.robotRadius);
         return (
           <g
-            className={`marty ${motion.status}${moving ? "" : " draggable"}`}
+            className={`marty ${motion.status}${moving || !onPlace ? "" : " draggable"}`}
             transform={`translate(${p.x} ${p.y}) rotate(${view.rotation(motion.pose.heading)})`}
             onPointerDown={onDown}
             aria-label={`Marty at ${fmt(motion.pose.x)}, ${fmt(motion.pose.y)}`}
@@ -317,7 +334,8 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
               {hover.year} · {hover.team} · {hover.id}
             </text>
             <text x={x + 10} y={y + 50} className="tt-meta">
-              approach ({fmt(hover.approach.x)}, {fmt(hover.approach.y)}) · click to go
+              {cardPoints[hover.id] ? `${cardPoints[hover.id]} pts` : "on cooldown"}
+              {bonusAt.get(hover.id) ? ` + ${bonusAt.get(hover.id)!.points} bonus` : ""} · click to request
             </text>
           </g>
         );

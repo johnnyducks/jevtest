@@ -1,8 +1,8 @@
 # MARTY.LIVE
 
-Chat with Marty, a Moorebot Scout, and watch it decide. For example, type *"Go to Griffey."* Jev interprets the request, the target is resolved against the card catalog, A* plans a route around obstacles, and Marty follows it on an overhead map of a fictional card room. Every step appears in the mission and decision panel as it happens.
+A live show starring Marty, a Moorebot Scout, in a fictional room full of baseball cards. Many people can watch at once. Each viewer picks a **@handle** and chats requests: *"Go to Griffey"*, *"Ripken, then Bonds, then Mantle"*, *"go around the display table"*, *"go upstairs"*. Jev, the decision engine, reads everyone's messages together and decides what Marty does next. Hard safety rules can veto its pick. Marty explains the decision in chat and drives the route on an overhead map. His battery drains with every meter, and the viewer who sent him earns the card's points.
 
-The map is a browser model of the room. No commands are sent to the physical Scout.
+The map is a simulation that runs on the server. No commands are sent to the physical Scout.
 
 ## Quick start
 
@@ -12,79 +12,105 @@ cp .env.example .env.local     # then set JEV_API_KEY
 npm run dev                    # http://localhost:3000
 ```
 
-Requires Node 20.9+. A Jev API key is required; without one, every request shows an error explaining that `JEV_API_KEY` is not set.
+Requires Node 20.9+. A Jev API key is required. Without one, Marty answers that his brain isn't reachable and never moves on viewer requests.
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `JEV_API_KEY` | yes | — | Jev / TypeSafe API key (`TYPESAFE_API_KEY` also accepted) |
 | `JEV_MODEL` | no | `jev-latest` | Any name from `GET /v1/models` |
 | `JEV_API_BASE` | no | `https://api.typesafe.ai` | Override for a proxy |
-| `OPENAI_API_KEY` | no | — | Marty's chat replies, written in character (built-in lines otherwise) |
-| `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's replies |
+| `OPENAI_API_KEY` | no | — | Marty's chat lines, written in character (built-in lines otherwise) |
+| `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's lines |
+| `OPERATOR_KEY` | no | — | Locks the gear-menu controls (stop, resume, dock, reset, placement, speed, battery) behind a key. Without it, anyone who opens the page can use them |
 | `WIKIPEDIA_ENABLED` | no | `true` | Set to `false` to use Lahman data only |
 | `WIKIPEDIA_USER_AGENT` | no | `MartyLive/0.1 (…)` | User-Agent sent to the Wikipedia API (Wikimedia asks for contact details) |
 
-Keys are read only in server code (`src/lib/jev/client.ts`, `src/lib/voice/openai.ts`) and never reach the browser. The bot icon in the header shows which model is in use and whether it is configured.
+Keys are read only in server code (`src/lib/jev/client.ts`, `src/lib/voice/openai.ts`, `src/lib/live/server.ts`) and never reach the browser. The bot icon in the header shows which models are in use.
 
 ## How it works
 
-### What you can do
+### One Marty, many viewers
+
+The server runs a single simulation (`lib/live/session.ts`). Every browser connects to `/api/live/stream` (Server-Sent Events) and receives the same chat, position, battery, trip and scoreboard. The first event is a full snapshot; live updates follow, and position updates arrive ten times a second.
+
+- **Handles**: 2–20 letters, numbers or underscores, remembered in the browser. Names such as `marty`, `jev` and `operator` are reserved. There are no accounts: a handle is a display name, not a login.
+- **Limits**: one message every 3 seconds per handle; at most 6 messages per 10 seconds from one connection (so a household can share Wi-Fi, but one person can't flood the chat with fake handles); 280 characters per message; at most 30 messages waiting.
+- The chat keeps the last 150 items in memory. Restarting the server starts a fresh show.
+
+### How Jev decides
+
+Messages are collected for about one second, then up to six go to Jev in **one** System One call (`lib/decision/batch.ts`):
+
+| Question | Type | What it asks |
+| --- | --- | --- |
+| `intent_<n>` | choice | What message *n* wants: `move`, `question`, `chat`, `stop` or `other` |
+| `taxing_<n>` | noul | Whether request *n* is too taxing or too slow to be worth doing now, given battery, time and points |
+| `next_action` | choice | One of: each viewer's planned route (`p_<n>`), `continue` the current trip, `stop`, `dock` (recharge), or `stay` |
+
+The state Jev sees includes Marty's battery %, driving range, current trip, active bonuses and, for each message, the route planner's estimate: meters, seconds, battery %, battery needed to get home afterwards, and points available.
+
+Deterministic rules then apply hard limits. These are not model outputs:
+
+| Rule | Effect |
+| --- | --- |
+| **B2** Battery reserve, including the way home | Declines a trip if the battery after it, minus the trip back to the dock, would fall below 10% |
+| **T1** Trip duration | Declines trips over 150 s |
+| **G2** Too taxing | Declines a request when Jev's `taxing` answer is 60% or more |
+| Intent | A route only runs if Jev read the message as `move` |
+| **B3** Low battery | At 15% or below Marty goes home first. After a trip, below 20%, he docks automatically |
+
+Marty takes the highest-ranked option that passes. Other allowed requests wait in a **queue** and are reconsidered when he's free (up to 3 times). Declined requests are explained. Marty then says what he's doing, for example:
+
+> I considered @amy's trip to the mezzanine (upstairs), but Jev judged it too taxing right now (74%). Let's do @bob's trip to Pete Rose instead, about 4.74 m and 3% battery. Worth 25 points.
+
+**how Jev decided** under that line shows how Jev read each message, every option with Jev's returned probability (shown as returned), each option's status (chosen, queued, declined, not chosen) and reason, and the rule results. Questions ("how's your battery?", "who was Rickey Henderson?") are answered from Marty's state and the baseball knowledge service. If Jev can't be reached, Marty says so and doesn't move. While a decision is pending, an operator **Stop** also cancels it: a decision that comes back after a stop is reported but not carried out.
+
+### Requests Marty understands
 
 | Try | What happens |
 | --- | --- |
-| "Go to Griffey." | Ken Griffey Jr. is resolved, a route is planned around the display table and partition wall, Marty drives there, and the mission ends **Arrived** |
-| "Take me to Rickey Henderson." | Full-name match, with a detour around the table |
-| "Go to Bonds." | Two Bonds cards exist, so Marty asks **which one** and doesn't move. Click a choice or type "Bobby" |
-| "Visit the nearest card." | Nearest card by *route length*, ignoring unreachable cards |
-| "Go to the other side of the room." | Your position mirrored across the room, snapped to reachable free space |
-| "Go to Honus Wagner." | The card sits in a locked vault, so the result is **No valid route** and Marty stays put |
-| "Stop." | Deterministic E-stop: halts immediately without waiting for the decision engine |
-| A new destination while moving | The old mission is **cancelled** and a new route is planned from Marty's current position |
+| "Go to Griffey" | One card. Route around the table and partition wall |
+| "Ripken, then Barry Bonds, then Mantle" | Multi-stop tour, in order. Also splits on commas, "and", "after that" and arrows |
+| "go to heanderson" | Typo tolerance: the closest card name within 1–2 letters ("heanderson → henderson"). The correction is shown under the message. Ties are never guessed |
+| "Go to Bonds" | Two Bonds cards exist, so Marty asks which one |
+| "go around the display table" / "lap the room" | A closed loop clear of the furniture |
+| "go upstairs" | Drives to the ramp, then climbs to the mezzanine and back: +14% battery and +30 s on top of the drive |
+| "nearest card", "the dock", "the middle", "the other side" | Named places |
+| "Go to Honus Wagner" | The card sits in a locked vault: Marty explains it's unreachable |
 
-### Chatting with Marty
+### Battery
 
-The right-hand column is a conversation. Each message gets a reply in Marty's voice (dry, sardonic, helpful), and the reply's status chip updates live: moving, arrived, stopped, and so on. A follow-up line appears when a mission finishes. Clarification questions come with buttons for the options. **trace** under a reply opens the full decision trace for that request.
+Battery drains from **measured simulated movement**, not time. Each move counts the distance driven (0.6% per meter) and the turning (0.1% per radian). The ramp climb costs a fixed 14%. The HUD shows the battery % and the **driving range** in meters above the 10% reserve. During a trip it also shows meters left and the ETA. Parked at the dock, Marty recharges at 2.5% per second. The numbers live in `lib/twin/battery.ts`.
 
-The text model never decides anything. Jev chooses the action and deterministic code resolves the target and plans the route. Marty's reply is written afterwards from those facts, and the voice prompt forbids contradicting them. Questions and chit-chat (Jev's `converse` action) get a conversational answer. The last few exchanges are passed along as context.
+### Points and bonuses
 
-- With `OPENAI_API_KEY` set, replies are written by OpenAI (`OPENAI_MODEL`, default `gpt-5`). The persona lives in `src/lib/voice/openai.ts`.
-- Without it, or if the call fails, Marty uses built-in lines with the same personality (`src/lib/voice/lines.ts`).
-- The bot icon in the header shows which of the two is active.
+Every card has base points according to how sought-after it is (Mantle 60, Robinson 50, Aaron 40, Griffey 35, and so on; `lib/twin/environment.ts`). When Marty reaches a card on your trip, you earn its points. A card's base points pay out again 2 minutes after a visit. Every 20–40 seconds a **bonus** (+20 to +80) spawns on a reachable card and expires after 45–90 seconds. Badges on the map show what each card is worth right now; bonus cards glow gold. The leaderboard and active bonuses sit under the map (`lib/game/game.ts`).
 
-Map controls:
-- **Drag Marty** to choose a start position. Drops inside an obstacle's clearance zone or outside the room are refused with a reason.
-- **Click a card** to send "Go to <name>". The **?** icon on the map shows both tips.
-- The **gear** icon on the map holds:
-  - **Stop**;
-  - **Resume**, which re-plans to the stopped target from where Marty is;
-  - **Reset**, which restores the default room, pose and empty log;
-  - speed (0.2–1.5 m/s), heading and the clearance-zone overlay.
-- Typing "Stop." always works too.
+### Operator controls
+
+The gear icon on the map has Stop, Resume (finishes the remaining stops), Dock, Reset (clears chat, scores and battery for everyone), speed, heading, a battery slider for testing, and the clearance overlay. Operators can also drag Marty to a new spot. Set `OPERATOR_KEY` to require a key for all of these; it's entered in the gear menu and remembered in that browser.
 
 ### Who decides what
 
 | Step | Done by | Module |
 | --- | --- | --- |
-| Interpret the request and choose the action (`navigate_card`, `navigate_nearest`, `navigate_area`, `stop`, `converse`, `hold_and_ask`) | **Jev**, through `/api/decide` and its policy rules | `lib/decision/*` |
-| Map words to a card or area (aliases, ambiguity, nearest reachable) | Deterministic code | `lib/twin/resolve.ts` |
-| Plan a collision-free route | Deterministic grid A* (0.1 m cells, obstacles inflated by Marty's radius plus clearance, no corner cutting, line-of-sight smoothing) | `lib/twin/pathfinding.ts`, `grid.ts` |
-| Move Marty on the map | Kinematic model: rotate in place, then drive | `lib/twin/motion.ts` |
-| Lifecycle, cancellation, stale-response protection | Mission controller | `lib/twin/controller.ts` |
+| What each message wants and what Marty does next | **Jev** (one batched call) | `lib/decision/batch.ts` |
+| Battery, time and intent limits | Deterministic rules | `lib/decision/batch.ts` |
+| Words → cards, places, typo correction, multi-stop parsing | Deterministic code | `lib/twin/resolve.ts`, `fuzzy.ts`, `routes.ts` |
+| Route planning and estimates | Grid A* (0.1 m cells, obstacles inflated by Marty's radius plus clearance, line-of-sight smoothing) | `lib/twin/pathfinding.ts`, `routes.ts` |
+| Movement and battery drain | Kinematic simulation plus the measured-distance battery | `lib/twin/motion.ts`, `battery.ts` |
+| Points and bonuses | Seeded game layer | `lib/game/game.ts` |
+| What Marty says | OpenAI if configured, else built-in lines. Grounded in the decision's facts and reasons | `lib/voice/openai.ts`, `lib/live/lines.ts` |
 
-Each request is one batched Jev call with eight typed questions. The call carries Marty's pose, motion state and the card catalog, and Jev chooses among the navigation actions. The panel tags each item with where it came from:
-- **model · jev** for the interpreted intent, the selected action and the alternatives (shown with Jev's real returned probabilities),
-- **deterministic** for target resolution and route planning,
-- **rule** for the E-stop, clarification answers and Resume, which never involve the model.
-
-Mission states shown in the panel are real controller transitions with timestamps: request received → interpreting → resolving → planning → route ready → moving → arrived. Other outcomes are stopped, cancelled, needs clarification, no valid route, declined, answered and error.
+The text model never decides anything. It phrases what Jev and the rules already decided, and its prompt forbids inventing reasons, numbers or points. Built-in lines are tagged **built-in** in the chat.
 
 ### Environment
 
-The room is 12 m × 8 m, with the origin at the bottom-left and +y pointing north. All map elements go through one world→screen transform (`lib/twin/geometry.ts`), so the map scales without touching world data. The room and card catalog are plain data in `lib/twin/environment.ts`. Each card has a stable ID, name, aliases, position, facing direction and approach point. The obstacles are a partition wall, a display table, two plinths, a low shelf, an equipment rack and a locked vault cage. The cards are Ken Griffey Jr., Rickey Henderson, Bobby Bonds, Barry Bonds, Cal Ripken Jr., Hank Aaron, Jackie Robinson, Ichiro Suzuki, Mickey Mantle and Honus Wagner (the one in the vault). Their positions are fictional.
+The room is 12 m × 8 m, with the origin at the bottom-left and +y pointing north. All map elements go through one world→screen transform (`lib/twin/geometry.ts`). The room and card catalog are plain data in `lib/twin/environment.ts`. The obstacles are a partition wall, a display table, two plinths, a low shelf, an equipment rack and a locked vault cage. There is a ramp up to the mezzanine in the north-west corner. The cards are Ken Griffey Jr., Rickey Henderson, Bobby Bonds, Barry Bonds, Cal Ripken Jr., Hank Aaron, Jackie Robinson, Ichiro Suzuki, Mickey Mantle, Pete Rose and Honus Wagner (the one in the vault). Their positions are fictional.
 
 ### Future hardware
 
-The map and panel read Marty's state only through the `PoseSource` interface in `lib/twin/motion.ts`. `SimulatedMotion` is the only implementation. A real Scout telemetry adapter could implement the same interface later without changes to the renderer or the panel. No hardware integration exists in this prototype.
+Marty's position comes only from the `PoseSource` interface in `lib/twin/motion.ts`. `SimulatedMotion` is the only implementation. A real Scout telemetry adapter could implement the same interface later. No hardware integration exists in this prototype.
 
 ## Baseball knowledge
 
@@ -147,23 +173,26 @@ Wikipedia supplements the statistics with biography and trivia:
 
 ```
 src/
+  lib/live/           the live session (one Marty, many viewers), its server singleton, stream types, built-in lines
+  lib/decision/       batch.ts: Jev batch arbitration + rules; engine/policy/questions: single-request engine (/api/decide)
   lib/jev/            Jev API types (from the published OpenAPI spec) + server-only client
-  lib/decision/       question set + navigation candidates, policy rules, engine (decide())
-  lib/marty/          robot state used by the policy rules (battery, mission)
-  lib/twin/           environment & cards, geometry/transform, occupancy grid, A*,
-                      target resolution, motion (PoseSource + SimulatedMotion), mission controller
-  lib/twin/__tests__  node:test suites for the above
-  lib/voice/          Marty's voice: persona + OpenAI call (server), facts + built-in lines, chat director
+  lib/game/           points, bonuses, leaderboard
+  lib/twin/           environment & cards, geometry, occupancy grid, A*, resolution, typo matching,
+                      multi-stop routes, battery, motion (PoseSource + SimulatedMotion), single-user controller
+  lib/voice/          Marty's voice: persona + OpenAI calls (server), built-in lines
   lib/baseball/       knowledge store, fact building/selection, Wikipedia client, commentary policy, service
   scripts/            import-lahman.ts (Lahman CSV → data/baseball/knowledge.json)
   data/baseball/      generated knowledge file + its license/attribution note
-  app/api/decide      POST: message + twin context → DecisionResult
+  app/api/live/stream GET: Server-Sent Events (snapshot, chat, telemetry, trip, game)
+  app/api/live/chat   POST { handle, text }: queue a viewer message
+  app/api/live/operator POST { action, key? }: stop, resume, dock, reset, place, rotate, speed, battery
+  app/api/decide      POST: one message + twin context → DecisionResult (single-user engine, still available)
   app/api/reply       POST: outcome facts + recent chat → Marty's reply
-  app/api/status      GET: which model is configured (no secrets)
-  components/         Studio (header), Popover, twin/TwinView, TwinMap (SVG), ChatLog, TwinPanel (trace + map HUD)
+  app/api/status      GET: which models are configured, whether an operator key is required (no secrets)
+  components/         Studio (header), Popover, live/LiveView + LiveChat + useLive, twin/TwinMap (SVG)
 ```
 
-Dependencies are `next`, `react` and `react-dom` only. There is no database, no authentication and no robot-control integration.
+Dependencies are `next`, `react` and `react-dom` only. There is no database and no robot-control integration. State lives in server memory, so run one server process: several processes would each run their own Marty.
 
 ## Scripts
 
@@ -172,7 +201,7 @@ npm run dev        # development server
 npm run build      # production build (includes type-check)
 npm start          # serve the production build
 npm run typecheck  # tsc --noEmit
-npm test           # navigation, voice, baseball knowledge and commentary tests (node:test, no extra deps)
+npm test           # live session, routes, battery, game, navigation, voice and baseball tests (node:test, no extra deps)
 npm run import:lahman -- --src <csv folder> [--version "Lahman 2025"]
 ```
 
