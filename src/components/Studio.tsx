@@ -46,6 +46,14 @@ export default function Studio() {
               {status && !status.jev.configured && <span className="pop-warn">Not configured: set JEV_API_KEY on the server.</span>}
             </span>
           </div>
+          <div className="pop-row" style={{ marginTop: 10 }}>
+            <span className={`dot ${status?.voice.configured ? "on" : ""}`} />
+            <span>
+              <b>Voice</b> · {status ? (status.voice.configured ? `OpenAI ${status.voice.model}` : "built-in lines") : "…"}
+              <span className="pop-sub">Writes Marty&apos;s chat replies, in character, from the facts above.</span>
+              {status && !status.voice.configured && <span className="pop-warn">Set OPENAI_API_KEY for freshly written replies.</span>}
+            </span>
+          </div>
         </Popover>
       </header>
 

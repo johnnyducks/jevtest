@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { postJson } from "@/lib/api";
 import type { DecisionResult } from "@/lib/decision/contracts";
 import { DEFAULT_WORLD } from "@/lib/marty/world";
@@ -9,10 +9,12 @@ import { ENVIRONMENT } from "@/lib/twin/environment";
 import { makeTransform } from "@/lib/twin/geometry";
 import { buildGrid } from "@/lib/twin/grid";
 import { SimulatedMotion } from "@/lib/twin/motion";
+import { builtInReply, outcomeOf } from "@/lib/voice/lines";
 import { Gear, Help, Send } from "../icons";
 import Popover from "../Popover";
 import TwinMap from "./TwinMap";
-import TwinPanel, { StatusChip } from "./TwinPanel";
+import ChatLog, { type Reply } from "./ChatLog";
+import { MapHud } from "./TwinPanel";
 
 const GRID = buildGrid(ENVIRONMENT);
 const VIEW = makeTransform(ENVIRONMENT.width, ENVIRONMENT.height);
@@ -38,7 +40,8 @@ export default function TwinView() {
   const [draft, setDraft] = useState("");
   const [speed, setSpeed] = useState(motion.getSpeed());
   const [showClearance, setShowClearance] = useState(true);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [replies, setReplies] = useState<Record<string, Reply>>({});
+  const requested = useRef(new Set<string>());
 
   useEffect(() => () => motion.stop(), [motion]);
   useEffect(() => {
@@ -47,8 +50,35 @@ export default function TwinView() {
     return () => clearTimeout(t);
   }, [state.notice, ctl]);
 
-  const latest = state.missions.at(-1);
-  const shown = state.missions.find((m) => m.id === selected) ?? latest;
+  // Ask for Marty's reply once a mission has something to report.
+  useEffect(() => {
+    if (state.missions.length === 0 && requested.current.size) {
+      requested.current.clear();
+      setReplies({});
+      return;
+    }
+    for (const m of state.missions) {
+      const outcome = outcomeOf(m);
+      if (!outcome || requested.current.has(m.id)) continue;
+      requested.current.add(m.id);
+      setReplies((r) => ({ ...r, [m.id]: { state: "pending", at: outcome.status } }));
+      const history = state.missions
+        .filter((x) => x.seq < m.seq && replies[x.id]?.text)
+        .slice(-5)
+        .flatMap((x) => [
+          { role: "user" as const, text: x.request },
+          { role: "assistant" as const, text: replies[x.id].text! },
+        ]);
+      type ReplyBody = { text: string; source: "openai" | "built-in"; model?: string };
+      postJson<ReplyBody>("/api/reply", { outcome, history })
+        .catch((): ReplyBody => ({ text: builtInReply(outcome, ENVIRONMENT.cards.map((c) => c.name)), source: "built-in" }))
+        .then((res) => {
+          if (!requested.current.has(m.id)) return; // reset in the meantime
+          setReplies((r) => ({ ...r, [m.id]: { state: "done", at: outcome.status, text: res.text, source: res.source, model: res.model } }));
+        });
+    }
+  }, [state.missions, replies]);
+
   const onMap = state.missions.find((m) => m.id === state.activeId);
   const canResume = onMap?.status === "stopped";
   const moving = pose.status === "moving";
@@ -56,7 +86,6 @@ export default function TwinView() {
   const send = (text: string) => {
     const t = text.trim();
     if (!t) return;
-    setSelected(null);
     void ctl.submit(t);
     setDraft("");
   };
@@ -92,7 +121,7 @@ export default function TwinView() {
                 <button className="btn" onClick={() => ctl.resume()} disabled={!canResume}>
                   ▶ Resume
                 </button>
-                <button className="btn" onClick={() => (setSelected(null), ctl.reset())}>
+                <button className="btn" onClick={() => ctl.reset()}>
                   ↺ Reset
                 </button>
               </div>
@@ -129,9 +158,14 @@ export default function TwinView() {
             </Popover>
           </div>
 
+          <MapHud motion={pose} speed={speed} />
           {state.notice && <div className={`map-notice ${state.notice.kind}`}>{state.notice.text}</div>}
         </div>
 
+      </section>
+
+      <aside className="twin-chat" aria-label="Chat with Marty">
+        <ChatLog missions={state.missions} replies={replies} onClarify={(id) => ctl.chooseClarification(id)} onRetry={(t) => send(t)} />
         <form
           className="composer twin-composer"
           onSubmit={(e) => {
@@ -154,42 +188,6 @@ export default function TwinView() {
             <Send />
           </button>
         </form>
-      </section>
-
-      <aside className="twin-side" aria-label="Mission and decision">
-        <TwinPanel
-          mission={shown}
-          motion={pose}
-          speed={speed}
-          onClarify={(id) => ctl.chooseClarification(id)}
-          onRetry={(t) => send(t)}
-        />
-
-        <div className="section-title" style={{ marginTop: 6 }}>
-          <span>Mission log</span>
-          <span className="mono">{state.missions.length}</span>
-        </div>
-        {state.missions.length === 0 ? (
-          <div className="card inspector-idle">Requests and their outcomes will be logged here.</div>
-        ) : (
-          <ol className="timeline">
-            {[...state.missions].reverse().map((m) => (
-              <li key={m.id}>
-                <button className="tl-item" aria-current={m.id === shown?.id} onClick={() => setSelected(m.id)}>
-                  <span className="tl-index">#{m.seq}</span>
-                  <span className="tl-body">
-                    <div className="tl-msg">{m.request}</div>
-                    <div className="tl-meta">
-                      {m.target ? `→ ${m.target.name}` : m.decision ? m.decision.actionLabel : "…"}
-                      {m.plan?.status === "ok" ? ` · ${m.plan.length} m` : ""}
-                    </div>
-                  </span>
-                  <StatusChip status={m.status} />
-                </button>
-              </li>
-            ))}
-          </ol>
-        )}
       </aside>
     </div>
   );

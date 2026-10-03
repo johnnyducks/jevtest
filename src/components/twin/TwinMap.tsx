@@ -247,7 +247,7 @@ export default function TwinMap({ env, grid, view, motion, mission, showClearanc
             {fail ? (
               <>
                 <path d={`M ${t.x - 7} ${t.y - 7} L ${t.x + 7} ${t.y + 7} M ${t.x + 7} ${t.y - 7} L ${t.x - 7} ${t.y + 7}`} className="dest-x" />
-                <text x={t.x} y={t.y - 14} textAnchor="middle" className="dest-label">
+                <text x={t.x} y={t.y < view.pad + 60 ? t.y + 24 : t.y - 14} textAnchor="middle" className="dest-label">
                   NO ROUTE
                 </text>
               </>

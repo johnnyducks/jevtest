@@ -1,6 +1,6 @@
 # MARTY.LIVE
 
-Tell Marty, a Moorebot Scout, where to go, and watch it decide. For example, type *"Go to Griffey."* Jev interprets the request, the target is resolved against the card catalog, A* plans a route around obstacles, and Marty follows it on an overhead map of a fictional card room. Every step appears in the mission and decision panel as it happens.
+Chat with Marty, a Moorebot Scout, and watch it decide. For example, type *"Go to Griffey."* Jev interprets the request, the target is resolved against the card catalog, A* plans a route around obstacles, and Marty follows it on an overhead map of a fictional card room. Every step appears in the mission and decision panel as it happens.
 
 The map is a browser model of the room. No commands are sent to the physical Scout.
 
@@ -19,8 +19,10 @@ Requires Node 20.9+. A Jev API key is required; without one, every request shows
 | `JEV_API_KEY` | yes | — | Jev / TypeSafe API key (`TYPESAFE_API_KEY` also accepted) |
 | `JEV_MODEL` | no | `jev-latest` | Any name from `GET /v1/models` |
 | `JEV_API_BASE` | no | `https://api.typesafe.ai` | Override for a proxy |
+| `OPENAI_API_KEY` | no | — | Marty's chat replies, written in character (built-in lines otherwise) |
+| `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's replies |
 
-Keys are read only in server code (`src/lib/jev/client.ts`) and never reach the browser. The bot icon in the header shows which model is in use and whether it is configured.
+Keys are read only in server code (`src/lib/jev/client.ts`, `src/lib/voice/openai.ts`) and never reach the browser. The bot icon in the header shows which model is in use and whether it is configured.
 
 ## How it works
 
@@ -36,6 +38,16 @@ Keys are read only in server code (`src/lib/jev/client.ts`) and never reach the 
 | "Go to Honus Wagner." | The card sits in a locked vault, so the result is **No valid route** and Marty stays put |
 | "Stop." | Deterministic E-stop: halts immediately without waiting for the decision engine |
 | A new destination while moving | The old mission is **cancelled** and a new route is planned from Marty's current position |
+
+### Chatting with Marty
+
+The right-hand column is a conversation. Each message gets a reply in Marty's voice (dry, sardonic, helpful), and the reply's status chip updates live: moving, arrived, stopped, and so on. A follow-up line appears when a mission finishes. Clarification questions come with buttons for the options. **trace** under a reply opens the full decision trace for that request.
+
+The text model never decides anything. Jev chooses the action and deterministic code resolves the target and plans the route. Marty's reply is written afterwards from those facts, and the voice prompt forbids contradicting them. Questions and chit-chat (Jev's `converse` action) get a conversational answer. The last few exchanges are passed along as context.
+
+- With `OPENAI_API_KEY` set, replies are written by OpenAI (`OPENAI_MODEL`, default `gpt-5`). The persona lives in `src/lib/voice/openai.ts`.
+- Without it, or if the call fails, Marty uses built-in lines with the same personality (`src/lib/voice/lines.ts`).
+- The bot icon in the header shows which of the two is active.
 
 Map controls:
 - **Drag Marty** to choose a start position. Drops inside an obstacle's clearance zone or outside the room are refused with a reason.
@@ -82,9 +94,11 @@ src/
   lib/twin/           environment & cards, geometry/transform, occupancy grid, A*,
                       target resolution, motion (PoseSource + SimulatedMotion), mission controller
   lib/twin/__tests__  node:test suites for the above
+  lib/voice/          Marty's voice: persona + OpenAI call (server), facts + built-in lines (shared)
   app/api/decide      POST: message + twin context → DecisionResult
+  app/api/reply       POST: outcome facts + recent chat → Marty's reply
   app/api/status      GET: which model is configured (no secrets)
-  components/         Studio (header), Popover, twin/TwinView, TwinMap (SVG), TwinPanel
+  components/         Studio (header), Popover, twin/TwinView, TwinMap (SVG), ChatLog, TwinPanel (trace + map HUD)
 ```
 
 Dependencies are `next`, `react` and `react-dom` only. There is no database, no authentication and no robot-control integration.
