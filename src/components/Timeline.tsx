@@ -10,8 +10,9 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
+/** Chronological decision log for this session (newest first). */
 export default function Timeline({ turns, selectedId, onSelect }: Props) {
-  if (!turns.length) return <div className="card inspector-idle">Decisions will collect here for this session.</div>;
+  if (!turns.length) return <div className="card inspector-idle">Decisions will be logged here for this session.</div>;
 
   return (
     <ol className="timeline">
@@ -28,17 +29,21 @@ export default function Timeline({ turns, selectedId, onSelect }: Props) {
               <button className="tl-item" aria-current={t.id === selectedId} onClick={() => onSelect(t.id)}>
                 <span className="tl-index">#{i + 1}</span>
                 <span className="tl-body">
-                  <div className="tl-msg">{t.text}</div>
+                  <div className="tl-msg">
+                    {t.whatIf ? <span className="whatif-tag">what if</span> : null}
+                    {t.text}
+                  </div>
                   <div className="tl-meta">
-                    {time} ·{" "}
+                    {time} · BAT {t.world.battery}% ·{" "}
                     {t.decision.status === "pending"
-                      ? "classifying…"
+                      ? "thinking…"
                       : t.decision.status === "error"
                         ? `error: ${t.decision.error.code}`
-                        : intent
-                          ? `${intent.choice} ${choicePct(intent)} → ${d?.effect.label}`
+                        : intent && d
+                          ? `${intent.choice} ${choicePct(intent)} → ${d.effect.label}`
                           : "—"}
                   </div>
+                  {t.whatIf && <div className="tl-meta">{t.whatIf}</div>}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {intent && <Spark answer={intent} sim={sim} />}

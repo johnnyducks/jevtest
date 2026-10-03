@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Jev Decision Studio",
-  description: "Watch a structured AI decision engine classify, score and route each chat message in real time.",
+  title: "MARTY / THE BRAIN",
+  description: "Every message changes the mission. A sandbox for exploring how an autonomous robot interprets requests and selects actions.",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#06080b",
+  themeColor: "#040507",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -4,35 +4,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { postJson, toClientError } from "@/lib/api";
 import type { ChatTurn, DecisionResult, Mode, ReplyRequestBody, ReplyResult, StatusBody } from "@/lib/decision/contracts";
 import type { ChoiceAnswer } from "@/lib/jev/types";
+import { DEFAULT_WORLD, SCENARIOS, type World } from "@/lib/marty/world";
 import Chat from "./Chat";
 import { Bolt, Flask, Logo } from "./icons";
 import Inspector from "./Inspector";
 import type { Turn } from "./types";
 
-const STORAGE_KEY = "jev-decision-studio:v1";
-/** Let the pipeline reveal finish before the reply lands (UI pacing only). */
-const MIN_REPLY_DELAY_MS = 1400;
+const STORAGE_KEY = "marty-the-brain:v1";
+/** Let the pipeline reveal finish before the commentary lands (UI pacing only). */
+const MIN_REPLY_DELAY_MS = 1600;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const interrupted = { status: "error" as const, error: { code: "interrupted", message: "Interrupted by page reload.", retryable: true } };
 
-function loadSession(): { turns: Turn[]; mode?: Mode } | null {
+function loadSession(): { turns: Turn[]; mode?: Mode; world?: World } | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { turns: Turn[]; mode?: Mode };
+    const parsed = JSON.parse(raw) as { turns: Turn[]; mode?: Mode; world?: World };
     // Requests in flight when the page unloaded cannot resume; mark them retryable.
-    const turns = parsed.turns.map((t) => ({
-      ...t,
-      decision:
-        t.decision.status === "pending"
-          ? { status: "error" as const, error: { code: "interrupted", message: "Interrupted by page reload.", retryable: true } }
-          : t.decision,
-      reply:
-        t.reply.status === "pending"
-          ? { status: "error" as const, error: { code: "interrupted", message: "Interrupted by page reload.", retryable: true } }
-          : t.reply,
-    }));
-    return { turns, mode: parsed.mode };
+    const turns = parsed.turns
+      .filter((t) => t && t.world)
+      .map((t) => ({
+        ...t,
+        decision: t.decision.status === "pending" ? interrupted : t.decision,
+        reply: t.reply.status === "pending" ? interrupted : t.reply,
+      }));
+    return { turns, mode: parsed.mode, world: parsed.world };
   } catch {
     return null;
   }
@@ -51,6 +49,7 @@ function historyBefore(turns: Turn[], id: string): ChatTurn[] {
 
 export default function Studio() {
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [world, setWorld] = useState<World>(DEFAULT_WORLD);
   const [mode, setMode] = useState<Mode>("demo");
   const [status, setStatus] = useState<StatusBody | null>(null);
   const [selectedId, setSelectedId] = useState<string>();
@@ -64,6 +63,7 @@ export default function Studio() {
     const saved = loadSession();
     if (saved) {
       setTurns(saved.turns);
+      if (saved.world) setWorld(saved.world);
       setRestoredIds(new Set(saved.turns.map((t) => t.id)));
       setSelectedId(saved.turns[saved.turns.length - 1]?.id);
     }
@@ -81,11 +81,11 @@ export default function Studio() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ turns, mode }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ turns, mode, world }));
     } catch {
       // Storage full or unavailable: the session simply won't survive a reload.
     }
-  }, [turns, mode, hydrated]);
+  }, [turns, mode, world, hydrated]);
 
   const patch = useCallback((id: string, fn: (t: Turn) => Turn) => {
     setTurns((ts) => ts.map((t) => (t.id === id ? fn(t) : t)));
@@ -97,13 +97,14 @@ export default function Studio() {
       if (!turn) return;
       patch(id, (t) => ({ ...t, reply: { status: "pending" } }));
       const intent = decision.response.answers.intent as ChoiceAnswer;
+      const { action, label, priority, directive, constraints } = decision.effect;
       const body: ReplyRequestBody = {
         message: turn.text,
         mode: turn.mode,
         history: historyBefore(turnsRef.current, id),
         decision: {
           source: decision.source,
-          effect: decision.effect,
+          effect: { action, label, priority, directive, constraints },
           intent: intent.choice,
           intentConfidence: intent.confidence,
         },
@@ -127,9 +128,12 @@ export default function Studio() {
         const data = await postJson<DecisionResult>("/api/decide", {
           message: turn.text,
           mode: turn.mode,
+          world: turn.world,
           history: historyBefore(turnsRef.current, id),
         });
         patch(id, (t) => ({ ...t, decision: { status: "done", data } }));
+        // The newest decision drives the mission state going forward.
+        if (turnsRef.current[turnsRef.current.length - 1]?.id === id) setWorld(data.worldAfter);
         await runReply(id, data, MIN_REPLY_DELAY_MS);
       } catch (err) {
         patch(id, (t) => ({ ...t, decision: { status: "error", error: toClientError(err) } }));
@@ -138,12 +142,15 @@ export default function Studio() {
     [patch, runReply],
   );
 
-  const send = (text: string) => {
+  const send = (text: string, opts: { world?: World; whatIf?: string; scenario?: string } = {}) => {
     const turn: Turn = {
       id: crypto.randomUUID(),
       text,
       mode,
       createdAt: new Date().toISOString(),
+      world: structuredClone(opts.world ?? world),
+      ...(opts.whatIf ? { whatIf: opts.whatIf } : {}),
+      ...(opts.scenario ? { scenario: opts.scenario } : {}),
       decision: { status: "pending" },
       reply: { status: "idle" },
     };
@@ -151,6 +158,28 @@ export default function Studio() {
     setTurns(turnsRef.current);
     setSelectedId(turn.id);
     void runDecision(turn.id);
+  };
+
+  const startScenario = (id: string) => {
+    const s = SCENARIOS.find((x) => x.id === id);
+    if (!s) return;
+    setWorld(structuredClone(s.world));
+    send(s.message, { world: s.world, scenario: s.title });
+  };
+
+  /** Re-run a message against a changed scenario variable. */
+  const whatIf = (turnId: string, changed: World, label: string) => {
+    const t = turnsRef.current.find((x) => x.id === turnId);
+    if (!t) return;
+    send(t.text, { world: changed, whatIf: label, scenario: t.scenario });
+  };
+
+  const reset = () => {
+    setTurns([]);
+    turnsRef.current = [];
+    setWorld(structuredClone(DEFAULT_WORLD));
+    setSelectedId(undefined);
+    setView("chat");
   };
 
   const retryReply = (id: string) => {
@@ -175,21 +204,32 @@ export default function Studio() {
             <Logo />
           </span>
           <div>
-            <div className="brand-name">Jev Decision Studio</div>
-            <div className="brand-sub">Structured decisions → conversational effects</div>
+            <div className="brand-name">
+              MARTY <span className="brand-slash">/</span> THE BRAIN
+            </div>
+            <div className="brand-sub">Every message changes the mission.</div>
           </div>
         </div>
         <div className="topbar-spacer" />
         <div className="status-pills">
-          <span className="pill" title="Jev decision API">
+          <span className="pill" title="Jev decision API (server-side)">
             <span className={`dot ${liveAvailable ? "on" : ""}`} />
-            Jev {liveAvailable ? status?.jev.model : "not configured"}
+            JEV {liveAvailable ? status?.jev.model : "offline"}
           </span>
-          <span className="pill" title="Reply generation in live mode">
+          <span className="pill" title="Commentary generation in live mode">
             <span className={`dot ${status?.replies.configured ? "on" : ""}`} />
-            Replies {status?.replies.configured ? status.replies.model : "scripted"}
+            VOICE {status?.replies.configured ? status.replies.model : "scripted"}
+          </span>
+          <span className="pill" title="This is a sandbox. No physical robot is connected.">
+            <span className="dot sim" />
+            NO ROBOT LINKED
           </span>
         </div>
+        {turns.length > 0 && (
+          <button className="btn ghost" onClick={reset} disabled={busy} title="Clear the session and restore the default mission">
+            Reset
+          </button>
+        )}
         <div
           className="mode-switch"
           data-mode={mode}
@@ -212,10 +252,10 @@ export default function Studio() {
       <main className="main" data-view={view}>
         <div className="mobile-tabs" role="tablist">
           <button role="tab" aria-selected={view === "chat"} onClick={() => setView("chat")}>
-            Chat
+            Comms
           </button>
           <button role="tab" aria-selected={view === "inspector"} onClick={() => setView("inspector")}>
-            Inspector{turns.length ? ` · ${turns.length}` : ""}
+            Brain{turns.length ? ` · ${turns.length}` : ""}
           </button>
         </div>
         <Chat
@@ -223,7 +263,8 @@ export default function Studio() {
           mode={mode}
           busy={busy || !hydrated}
           selectedId={selected?.id}
-          onSend={send}
+          onSend={(text) => send(text)}
+          onScenario={startScenario}
           onInspect={inspect}
           onRetry={(id) => void runDecision(id)}
           onRetryReply={retryReply}
@@ -231,8 +272,11 @@ export default function Studio() {
         <Inspector
           turns={turns}
           selected={selected}
+          world={world}
+          busy={busy}
           onSelect={setSelectedId}
           onRetry={(id) => void runDecision(id)}
+          onWhatIf={whatIf}
           restoredIds={restoredIds}
           status={status}
         />

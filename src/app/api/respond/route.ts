@@ -1,11 +1,9 @@
-import type { ActionId, ReplyRequestBody } from "@/lib/decision/contracts";
+import { ACTION_IDS, type ActionId, type ReplyRequestBody } from "@/lib/decision/contracts";
 import { errorResponse, parseHistory, parseMessage, parseMode, readJson } from "@/lib/http";
 import { generateReply, ReplyError } from "@/lib/respond/generate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const ACTIONS: ActionId[] = ["answer", "execute", "troubleshoot", "deescalate", "acknowledge", "converse", "clarify", "escalate"];
 
 export async function POST(req: Request) {
   const body = await readJson(req);
@@ -13,7 +11,7 @@ export async function POST(req: Request) {
   const mode = parseMode(body?.mode);
   const decision = body?.decision as ReplyRequestBody["decision"] | undefined;
   if (!message || !mode) return errorResponse(400, "bad_request", "Missing message or mode.");
-  if (!decision?.effect || !ACTIONS.includes(decision.effect.action)) {
+  if (!decision?.effect || !ACTION_IDS.includes(decision.effect.action as ActionId)) {
     return errorResponse(400, "bad_request", "Missing or invalid decision.");
   }
   const effect = decision.effect;
@@ -27,11 +25,10 @@ export async function POST(req: Request) {
       intentConfidence: Number(decision.intentConfidence) || 0,
       effect: {
         action: effect.action,
-        label: String(effect.label ?? "").slice(0, 80),
+        label: String(effect.label ?? "").slice(0, 160),
         priority: (["P0", "P1", "P2", "P3"] as const).includes(effect.priority) ? effect.priority : "P3",
-        directive: String(effect.directive ?? "").slice(0, 600),
-        reasons: [],
-        flags: [],
+        directive: String(effect.directive ?? "").slice(0, 800),
+        constraints: Array.isArray(effect.constraints) ? effect.constraints.slice(0, 5).map((c) => String(c).slice(0, 160)) : [],
       },
     },
   };
@@ -41,6 +38,6 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof ReplyError) return errorResponse(502, err.code, err.message, err.retryable);
     console.error("respond failed", err);
-    return errorResponse(500, "internal", "Reply generation failed unexpectedly.", true);
+    return errorResponse(500, "internal", "Commentary generation failed unexpectedly.", true);
   }
 }

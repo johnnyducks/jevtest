@@ -26,29 +26,54 @@ export function describe(d: Describable | null | undefined): string {
   return typeof d === "string" ? d : JSON.stringify(d);
 }
 
-export function ChoiceBars({ answer }: { answer: ChoiceAnswer }) {
+/** A Jev choice distribution. For candidate actions, the policy's selection and blocked rows are overlaid. */
+export function ChoiceBars({
+  answer,
+  labels,
+  blocked,
+  selectedKey,
+}: {
+  answer: ChoiceAnswer;
+  /** Display labels for choice keys (falls back to the key). */
+  labels?: Record<string, string>;
+  /** Keys removed by deterministic rules. */
+  blocked?: string[];
+  /** Key the policy selected; defaults to Jev's own top choice. */
+  selectedKey?: string | null;
+}) {
   const grow = useGrow();
+  const sel = selectedKey === undefined ? answer.choice : selectedKey;
   // Show every returned key, sorted by returned probability. Values are displayed as-is.
   const rows = Object.entries(answer.probabilities).sort((a, b) => b[1] - a[1]);
+  const stacked = !!labels;
   return (
-    <div className="bars" role="list">
-      {rows.map(([name, p], i) => (
-        <div
-          key={name}
-          role="listitem"
-          className={`bar-row${name === answer.choice ? " selected" : ""}`}
-          aria-label={`${name}: ${fmtPct(p)}`}
-        >
-          <span className="bar-label mono">{name}</span>
-          <span className="bar-track">
-            <span
-              className="bar-fill"
-              style={{ width: grow ? `${Math.max(0, Math.min(1, p)) * 100}%` : 0, transitionDelay: `${i * 60}ms` }}
-            />
-          </span>
-          <span className="bar-value">{fmtPct(p)}</span>
-        </div>
-      ))}
+    <div className={`bars${stacked ? " stacked" : ""}`} role="list">
+      {rows.map(([name, p], i) => {
+        const isBlocked = blocked?.includes(name);
+        const isTop = name === answer.choice;
+        return (
+          <div
+            key={name}
+            role="listitem"
+            className={`bar-row${name === sel ? " selected" : ""}${isBlocked ? " blocked" : ""}`}
+            aria-label={`${labels?.[name] ?? name}: ${fmtPct(p)}${isBlocked ? ", blocked by rule" : ""}`}
+          >
+            <span className={`bar-label${stacked ? "" : " mono"}`} title={labels?.[name] ?? name}>
+              {labels?.[name] ?? name}
+              {stacked && isTop && name !== sel && <span className="mini-tag">model top</span>}
+              {isBlocked && <span className="mini-tag warn">blocked</span>}
+              {stacked && name === sel && <span className="mini-tag sel">selected</span>}
+            </span>
+            <span className="bar-track">
+              <span
+                className="bar-fill"
+                style={{ width: grow ? `${Math.max(0, Math.min(1, p)) * 100}%` : 0, transitionDelay: `${i * 50}ms` }}
+              />
+            </span>
+            <span className="bar-value">{fmtPct(p)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 {
-  "name": "jev-decision-studio",
+  "name": "marty-the-brain",
   "version": "0.1.0",
   "private": true,
-  "description": "Interactive demo of a structured AI decision engine (Jev) powering a conversational app.",
+  "description": "MARTY / THE BRAIN: an interactive sandbox for exploring how an autonomous robot interprets requests and selects actions, powered by Jev structured decisions.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

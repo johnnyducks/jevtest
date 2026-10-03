@@ -1,5 +1,5 @@
 /**
- * Conversational reply generation (OpenAI), independent of the decision engine.
+ * Marty's commentary generation (OpenAI), independent of the decision engine.
  * It receives only the selected effect, never raw probabilities to re-interpret.
  * SERVER ONLY.
  */
@@ -23,11 +23,11 @@ export class ReplyError extends Error {
   }
 }
 
-const SYSTEM = `You are the conversational layer of "Jev Decision Studio", a demo app.
-A separate decision engine has already classified the user's latest message and chosen an action.
-Follow the operator directive exactly. Keep replies short: 1-4 sentences, plain text, no markdown headings.
-You are a demo assistant with no access to accounts, orders or tools; never claim to have taken real-world actions.
-If the action is an escalation, say a human teammate would take over in a real deployment.`;
+const SYSTEM = `You write the onboard commentary for MARTY, a small indoor exploration robot, inside "MARTY / THE BRAIN".
+This is a simulated sandbox: no physical robot is connected. Never claim Marty has physically done anything; describe the plan ("Heading to…", "Next up…").
+A separate decision engine has already chosen Marty's next action under fixed safety rules. Narrate that decision; do not change it or second-guess it.
+Voice: Marty speaking in first person, upbeat, concise, a little playful. 1–3 sentences, plain text, no markdown, no emoji.
+Always mention any constraints you are given. Never agree to hide actions from viewers.`;
 
 interface ChatCompletion {
   model: string;
@@ -37,10 +37,10 @@ interface ChatCompletion {
 export async function generateReply(body: ReplyRequestBody): Promise<ReplyResult> {
   const cfg = replyConfig();
   if (body.mode !== "live") {
-    return { text: scripted(body.decision.effect.action), source: "scripted", note: "Demo mode" };
+    return { text: scripted(body.decision.effect.action, body.decision.effect.constraints), source: "scripted", note: "Demo mode" };
   }
   if (!cfg.configured) {
-    return { text: scripted(body.decision.effect.action), source: "scripted", note: "OPENAI_API_KEY not set" };
+    return { text: scripted(body.decision.effect.action, body.decision.effect.constraints), source: "scripted", note: "OPENAI_API_KEY not set" };
   }
 
   const { effect, intent, intentConfidence } = body.decision;
@@ -49,9 +49,9 @@ export async function generateReply(body: ReplyRequestBody): Promise<ReplyResult
     ...(body.history ?? []).slice(-8).map((t) => ({ role: t.role, content: t.text })),
     {
       role: "user",
-      content: `${body.message}\n\n<operator_directive>\nSelected action: ${effect.label} (${effect.priority}). Intent: ${intent} (${Math.round(
+      content: `${body.message}\n\n<decision>\nSelected action: ${effect.label} (${effect.priority}). Classified intent: ${intent} (${Math.round(
         intentConfidence * 100,
-      )}% confidence).\n${effect.directive}\n</operator_directive>`,
+      )}% confidence).\nConstraints: ${effect.constraints.length ? effect.constraints.join("; ") : "none"}.\n${effect.directive}\n</decision>`,
     },
   ];
 
@@ -125,16 +125,19 @@ function mapError(status: number, code: string, message: string, model: string):
 }
 
 const SCRIPTS: Record<ActionId, string> = {
-  answer: "Here's where a direct answer would go. The decision engine routed this as a question, so the reply focuses on explaining clearly and concisely.",
-  execute: "On it — this was routed as a task. In a full deployment, the assistant would now carry out the request or lay out the concrete steps.",
-  troubleshoot: "Sorry that's not working. This was routed to troubleshooting: the next reply would walk through the likely causes and what to check first.",
-  deescalate: "I'm sorry — that's genuinely frustrating, and I want to make it right. This was routed to de-escalation, so the reply leads with ownership and a concrete fix.",
-  acknowledge: "Thank you — that's really useful. This was routed as feedback, so it's acknowledged and logged rather than acted on.",
-  converse: "Hey! Good to hear from you. This was classified as small talk, so the reply stays light and invites you to keep going.",
-  clarify: "Happy to help — could you tell me a bit more about what you need? The engine judged the message too vague to act on yet.",
-  escalate: "I hear you. This has been flagged for a human teammate, who would take over from here in a real deployment.",
+  continue_mission: "Staying on task. The current mission still ranks highest, so that's where I'm headed next.",
+  return_to_dock: "Battery first. Heading back to the dock to recharge; the current mission is paused, not forgotten.",
+  navigate: "Route accepted. Plotting a path there now.",
+  inspect_object: "Search mode. I'll sweep the area and report what I find.",
+  explore_new_area: "New territory! Next up: somewhere I haven't mapped yet.",
+  revisit_popular_area: "Back by popular demand. Heading to a crowd-favourite spot.",
+  viewer_request: "Viewer request locked in. Thanks to everyone who voted; the other requests stay in the queue.",
+  converse: "Good question. Answering from right here, no wheels required.",
+  hold_and_ask: "Holding position. Can you tell me a bit more about what you'd like me to do?",
+  request_human: "This one needs a human. Pausing until an operator weighs in.",
+  reject: "I can't do that one. It breaks one of my rules, but I'm happy to try something else.",
 };
 
-function scripted(action: ActionId) {
-  return SCRIPTS[action];
+function scripted(action: ActionId, constraints: string[] = []) {
+  return constraints.length ? `${SCRIPTS[action]} (Constraints: ${constraints.join("; ")}.)` : SCRIPTS[action];
 }

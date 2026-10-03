@@ -3,19 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { MAX_MESSAGE_CHARS, type Mode } from "@/lib/decision/contracts";
 import type { ChoiceAnswer } from "@/lib/jev/types";
+import { SCENARIOS } from "@/lib/marty/world";
 import { Logo, Send } from "./icons";
 import type { Turn } from "./types";
 import { choicePct } from "./Viz";
-
-export const EXAMPLES = [
-  "I was charged twice for my subscription and I'm furious. Fix this now!!",
-  "How does probability calibration differ from accuracy?",
-  "Draft a friendly reminder email about Friday's design review.",
-  "Production checkout is down for all users — 500 errors since 9am",
-  "Love the new dashboard, the dark theme is gorgeous",
-  "help",
-  "I want to speak to a real person, not a bot.",
-];
 
 interface Props {
   turns: Turn[];
@@ -23,12 +14,13 @@ interface Props {
   busy: boolean;
   selectedId?: string;
   onSend: (text: string) => void;
+  onScenario: (id: string) => void;
   onInspect: (id: string) => void;
   onRetry: (id: string) => void;
   onRetryReply: (id: string) => void;
 }
 
-export default function Chat({ turns, mode, busy, selectedId, onSend, onInspect, onRetry, onRetryReply }: Props) {
+export default function Chat({ turns, mode, busy, selectedId, onSend, onScenario, onInspect, onRetry, onRetryReply }: Props) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -46,15 +38,15 @@ export default function Chat({ turns, mode, busy, selectedId, onSend, onInspect,
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
   }, [draft]);
 
-  const submit = (text = draft) => {
-    const t = text.trim();
+  const submit = () => {
+    const t = draft.trim();
     if (!t || busy || t.length > MAX_MESSAGE_CHARS) return;
     onSend(t);
     setDraft("");
   };
 
   return (
-    <section className="chat" aria-label="Conversation">
+    <section className="chat" aria-label="Operator comms">
       <div className="chat-scroll" ref={scrollRef}>
         <div className="chat-inner" aria-live="polite">
           {turns.length === 0 ? (
@@ -62,15 +54,22 @@ export default function Chat({ turns, mode, busy, selectedId, onSend, onInspect,
               <div className="glyph">
                 <Logo width={26} height={26} />
               </div>
-              <h1>Every message is a decision.</h1>
+              <div className="eyebrow">MARTY / THE BRAIN · decision sandbox</div>
+              <h1>Every message changes the mission.</h1>
               <p>
-                Each message is classified by a batch of typed questions (choice, score and yes/no). The returned
-                probabilities select an action, and that action shapes the reply.
+                Send Marty an instruction or pick a scenario. Each request is scored by Jev, filtered through
+                Marty&apos;s fixed safety rules, and turned into one next action. This is a simulation: no physical robot
+                is connected.
               </p>
-              <div className="examples">
-                {EXAMPLES.map((e) => (
-                  <button key={e} className="example" disabled={busy} onClick={() => submit(e)}>
-                    {e}
+              <div className="scenarios">
+                {SCENARIOS.map((s, i) => (
+                  <button key={s.id} className="scenario" disabled={busy} onClick={() => onScenario(s.id)}>
+                    <span className="scenario-head">
+                      <span className="mono dim">SCN-0{i + 1}</span>
+                      <span className="scenario-hint mono">{s.hint}</span>
+                    </span>
+                    <span className="scenario-title">{s.title}</span>
+                    <span className="scenario-msg">“{s.message}”</span>
                   </button>
                 ))}
               </div>
@@ -92,10 +91,10 @@ export default function Chat({ turns, mode, busy, selectedId, onSend, onInspect,
 
       <div className="composer-wrap">
         {turns.length > 0 && (
-          <div className="composer-examples">
-            {EXAMPLES.map((e) => (
-              <button key={e} className="example" disabled={busy} onClick={() => submit(e)} title={e}>
-                {e.length > 38 ? `${e.slice(0, 36)}…` : e}
+          <div className="composer-examples" aria-label="Scenario starters">
+            {SCENARIOS.map((s, i) => (
+              <button key={s.id} className="example" disabled={busy} onClick={() => onScenario(s.id)} title={s.message}>
+                <span className="mono dim">0{i + 1}</span> {s.title}
               </button>
             ))}
           </div>
@@ -107,13 +106,16 @@ export default function Chat({ turns, mode, busy, selectedId, onSend, onInspect,
             submit();
           }}
         >
+          <span className="composer-prompt mono" aria-hidden>
+            OP&gt;
+          </span>
           <textarea
             ref={taRef}
             rows={1}
             value={draft}
             maxLength={MAX_MESSAGE_CHARS}
-            placeholder={mode === "live" ? "Message, classified live by Jev…" : "Message (demo mode, simulated decisions)…"}
-            aria-label="Message"
+            placeholder={mode === "live" ? "Instruct Marty. Decisions come live from Jev…" : "Instruct Marty (demo mode: simulated decisions)…"}
+            aria-label="Message to Marty"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -128,8 +130,8 @@ export default function Chat({ turns, mode, busy, selectedId, onSend, onInspect,
         </form>
         <div className="composer-foot">
           <span>
-            <span className={`tag ${mode === "live" ? "live" : "sim"}`}>{mode === "live" ? "live" : "demo"}</span>{" "}
-            {mode === "live" ? "Real Jev responses" : "Simulated results, clearly labelled"}
+            <span className={`tag ${mode === "live" ? "live" : "sim"}`}>{mode === "live" ? "live · jev" : "demo · simulated"}</span>{" "}
+            {mode === "live" ? "Real Jev outputs" : "Heuristic stand-in, clearly labelled"}
           </span>
           <span className="hint">Enter to send · Shift+Enter for newline</span>
         </div>
@@ -157,7 +159,14 @@ function TurnView({
 
   return (
     <div className="turn">
-      <div className="bubble user">{turn.text}</div>
+      <div className="bubble user">
+        <div className="bubble-label mono">
+          OPERATOR
+          {turn.scenario && <span className="dim"> · {turn.scenario}</span>}
+          {turn.whatIf && <span className="whatif-tag">what if: {turn.whatIf}</span>}
+        </div>
+        {turn.text}
+      </div>
 
       {turn.decision.status === "error" ? (
         <div className="error-box" role="alert">
@@ -172,23 +181,23 @@ function TurnView({
           {d && intent ? (
             <>
               <span>
-                intent <strong>{intent.choice}</strong>{" "}
-                <span className="mono">{choicePct(intent)}</span>
+                intent <strong>{intent.choice}</strong> <span className="mono">{choicePct(intent)}</span>
               </span>
               <span className="arrow">→</span>
+              <span className="tag rule">rule</span>
               <strong>{d.effect.label}</strong>
               <span className="tag neutral">{d.effect.priority}</span>
             </>
           ) : (
             <span>
-              classifying <span className="typing" aria-hidden><i /><i /><i /></span>
+              thinking <span className="typing" aria-hidden><i /><i /><i /></span>
             </span>
           )}
         </button>
       )}
 
       {turn.reply.status === "pending" && (
-        <div className="bubble bot" aria-label="Generating reply">
+        <div className="bubble bot" aria-label="Generating commentary">
           <span className="typing" aria-hidden>
             <i />
             <i />
@@ -198,23 +207,24 @@ function TurnView({
       )}
       {turn.reply.status === "error" && (
         <div className="error-box" role="alert">
-          <span>Reply failed: {turn.reply.error.message}</span>
+          <span>Commentary failed: {turn.reply.error.message}</span>
           <button className="btn" onClick={() => onRetryReply(turn.id)}>
-            Retry reply
+            Retry commentary
           </button>
         </div>
       )}
       {turn.reply.status === "done" && (
         <div className="bubble bot">
-          {turn.reply.data.text}
-          <div className="bubble-meta">
+          <div className="bubble-label mono">
+            MARTY · COMMENTARY
             {turn.reply.data.source === "generated" ? (
-              <span className="tag live">generated · {turn.reply.data.model}</span>
+              <span className="tag voice">generated · {turn.reply.data.model}</span>
             ) : (
-              <span className="tag sim">scripted</span>
+              <span className="tag neutral">scripted</span>
             )}
-            {turn.reply.data.note && <span>{turn.reply.data.note}</span>}
           </div>
+          {turn.reply.data.text}
+          {turn.reply.data.note && <div className="bubble-meta">{turn.reply.data.note}</div>}
         </div>
       )}
     </div>
