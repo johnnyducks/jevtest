@@ -7,6 +7,7 @@
  * time and battery, plus the cost of getting home to the dock afterwards.
  */
 import { BATTERY, type BatteryConfig, turningAlong } from "./battery.ts";
+import { wrapAngle } from "./geometry.ts";
 import type { Card, Environment, Obstacle, Pose, SpecialPlace, Vec } from "./environment.ts";
 import { fuzzyPhraseIn } from "./fuzzy.ts";
 import { type Grid, isFreePoint } from "./grid.ts";
@@ -112,7 +113,7 @@ export function parseRequest(env: Environment, text: string): ParsedRequest {
 }
 
 export type Leg =
-  | { kind: "drive"; label: string; path: Vec[]; meters: number; stop?: { name: string; cardId?: string } }
+  | { kind: "drive"; label: string; path: Vec[]; meters: number; stop?: { name: string; cardId?: string }; /** Heading to turn to on arrival (face the card). */ face?: number }
   | { kind: "dwell"; label: string; seconds: number; battery: number; stop?: { name: string; cardId?: string } };
 
 export interface RoutePlan {
@@ -174,19 +175,26 @@ function loopAround(env: Environment, grid: Grid, from: Vec, target: Obstacle | 
 /** Plan all legs from `from`. Fails (ok: false) on the first unreachable stop, with a reason. */
 export function planRoute(env: Environment, grid: Grid, from: Pose, stops: StopRef[], opts: PlanOptions): RoutePlan {
   const cfg = opts.battery ?? BATTERY;
-  const view = opts.viewSeconds ?? 2;
+  const view = opts.viewSeconds ?? 3;
   const legs: Leg[] = [];
   const named: RoutePlan["stops"] = [];
   let cursor: Pose = { ...from };
   let fail: string | undefined;
+  let turnRad = 0;
 
-  const drive = (to: Vec, label: string, stop?: { name: string; cardId?: string }) => {
+  const drive = (to: Vec, label: string, stop?: { name: string; cardId?: string }, face?: number) => {
     const p = planPath(grid, cursor, to);
     if (p.status !== "ok") return p;
-    legs.push({ kind: "drive", label, path: p.waypoints, meters: p.length, ...(stop ? { stop } : {}) });
+    legs.push({ kind: "drive", label, path: p.waypoints, meters: p.length, ...(stop ? { stop } : {}), ...(face !== undefined ? { face } : {}) });
+    turnRad += turningAlong(cursor, p.waypoints);
     const last = p.waypoints.at(-1)!;
     const prev = p.waypoints.at(-2) ?? cursor;
-    cursor = { x: last.x, y: last.y, heading: p.waypoints.length > 1 ? Math.atan2(last.y - prev.y, last.x - prev.x) : cursor.heading };
+    let heading = p.waypoints.length > 1 ? Math.atan2(last.y - prev.y, last.x - prev.x) : cursor.heading;
+    if (face !== undefined) {
+      turnRad += Math.abs(wrapAngle(face - heading));
+      heading = face;
+    }
+    cursor = { x: last.x, y: last.y, heading };
     return p;
   };
 
@@ -201,7 +209,8 @@ export function planRoute(env: Environment, grid: Grid, from: Pose, stops: StopR
           break;
         }
       }
-      const p = drive(card!.approach, `to ${card!.name}`, { name: card!.name, cardId: card!.id });
+      // Square up to the card on arrival, so it fills Marty's camera.
+      const p = drive(card!.approach, `to ${card!.name}`, { name: card!.name, cardId: card!.id }, Math.atan2(-card!.facing.y, -card!.facing.x));
       if (p.status !== "ok") {
         fail = p.status === "no_path" ? `${card!.name} is unreachable (enclosed by obstacles).` : `${card!.name} can't be reached from here.`;
         break;
@@ -221,7 +230,8 @@ export function planRoute(env: Environment, grid: Grid, from: Pose, stops: StopR
       }
       named.push({ name: r.target.name, point: r.target.point });
     } else if (s.kind === "special") {
-      const p = drive(s.place.base, `to the ramp`, { name: s.place.name });
+      const zc = { x: s.place.zone.x + s.place.zone.w / 2, y: s.place.zone.y + s.place.zone.h / 2 };
+      const p = drive(s.place.base, `to the ramp`, { name: s.place.name }, Math.atan2(zc.y - s.place.base.y, zc.x - s.place.base.x));
       if (p.status !== "ok") {
         fail = `The ramp to ${s.place.name} can't be reached.`;
         break;
@@ -248,8 +258,6 @@ export function planRoute(env: Environment, grid: Grid, from: Pose, stops: StopR
 
   const drives = legs.filter((l): l is Extract<Leg, { kind: "drive" }> => l.kind === "drive");
   const meters = drives.reduce((a, l) => a + l.meters, 0);
-  const fullPath = drives.flatMap((l, i) => (i === 0 ? l.path : l.path.slice(1)));
-  const turnRad = turningAlong(from, fullPath);
   const dwell = legs.reduce((a, l) => a + (l.kind === "dwell" ? l.seconds : 0), 0);
   const dwellBattery = legs.reduce((a, l) => a + (l.kind === "dwell" ? l.battery : 0), 0);
   const home = planPath(grid, cursor, env.dock);

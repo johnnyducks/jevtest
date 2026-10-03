@@ -113,6 +113,14 @@ With `CARDSIGHT_API_KEY` set, each card in the room is linked to the real card i
 
 **How cards are matched** (`lib/cardsight/match.ts`): each card has a search hint with player, year, release and the printed card number, e.g. 1952 Topps #311 for Mantle and 1982 Topps Traded #98T for Ripken. The app searches the catalog and accepts a result only if the name, year and release agree. A matching card number makes it an **exact** match; without a number to check, as with the T206 Wagner, it's labelled a **likely** match. If nothing certain turns up, the card keeps its placeholder and shows "No certain match": the app never guesses. To pin a specific catalog card, put its CardSight UUID in that card's hint as `id`.
 
+**If you only see placeholders**, open the gear menu on the map and click **Check card images**. It looks every card up again and shows, per card, what happened:
+- whether the key is set, and whether CardSight accepted it;
+- which searches ran, and how many results each returned;
+- the closest catalog results, and why each one was or wasn't accepted;
+- whether the image downloaded.
+
+Only the operator can run it, because it spends CardSight lookups. The server's Terminal window also logs one line per card. Stray spaces or quotes around the key in `.env.local` are ignored. Each card tries several searches, most specific first, and reads the year from the release name when the year field is missing.
+
 The search runs once per card. Results are saved to `data/cardsight/matches.json`; delete that file to search again. Images are fetched by the server, cached in `.cache/cardsight/`, and served from `/api/cards/<card id>/image`, so the key never reaches the browser. The image route only serves the room's own cards, so the app can't be used to pull arbitrary images on your key.
 
 **Card backs:** CardSight provides one image per card, the front. To show a back, or to replace a front, drop your own image in `public/cards/`, e.g. `mantle-52-back.jpg` (see `public/cards/README.md`). The 2D card view then shows both sides, with a flip button on phones.
@@ -123,6 +131,7 @@ The **2D / 3D / FPV** switch at the bottom-right of the map changes only how the
 
 - **2D**: the original top-down map, unchanged.
 - **3D**: an observer camera. Drag to orbit, scroll or pinch to zoom, right-drag to pan. The near wall is see-through. Click a card to request it.
+- **Arriving at a card**, Marty turns in place to face it squarely: the route plan includes that final turn, and it's counted in the time and battery estimates. In FPV the camera then tilts up and zooms in so the card fills about 80% of the frame, and eases back out as he drives off. The framing rule, `framing()` in `lib/twin/space3d.ts`, is tested for every reachable card.
 - **FPV**: the view from a camera mounted on Marty, 16 cm up and just in front of his center, tilted up 7°. It moves with every pose update, and turns are damped slightly so they feel like a camera rather than a cut. A reticle, heading and position readout, and labels sit on top: card name and current points for cards within about 4.5 m ahead, plus a **NEXT** marker on the trip's next stop.
 
 The 2D→3D mapping lives in `lib/twin/space3d.ts`. It holds the axes, heights of walls and furniture, card placement and the FPV camera mount, and its tests check that the camera follows the same poses the 2D map draws. Rendering uses Three.js through React Three Fiber (`components/three/Room3D.tsx`). That code loads only when someone opens a 3D view. Without WebGL, the 3D views show a short notice and the 2D map still works.

@@ -554,7 +554,7 @@ export class LiveSession {
       return;
     }
     t.doing = leg.label;
-    if (leg.kind === "drive") this.motion.follow(leg.path, `${t.id}:${t.leg}`);
+    if (leg.kind === "drive") this.motion.follow(leg.path, `${t.id}:${t.leg}`, leg.face ?? null);
     else t.dwellLeft = leg.seconds;
     this.emit({ type: "trip", trip: this.publicTrip() });
   }

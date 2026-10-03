@@ -85,3 +85,46 @@ test("every card hangs on its surface, facing out, below the top of what it's mo
     assert.ok(p.heightCenter - CARD_SIZE.h / 2 > 0, `${card.id} above the floor`);
   }
 });
+
+test("arriving at a card, Marty turns to face it and the FPV camera frames it", async () => {
+  const { parseRequest, planRoute } = await import("../routes.ts");
+  const { framing, CARD_SIZE: SIZE, MARTY: M } = await import("../space3d.ts");
+  for (const id of ["griffey-89", "robinson-52", "rose-63", "mantle-52", "henderson-80"]) {
+    const card = env.cards.find((c) => c.id === id)!;
+    const plan = planRoute(env, grid, env.defaultPose, parseRequest(env, card.name).stops, { speed: 0.6, turnRate: Math.PI });
+    const leg = plan.legs.find((l) => l.kind === "drive" && l.stop?.cardId === id)!;
+    assert.ok(leg.kind === "drive" && leg.face !== undefined, `${id}: drive leg asks to face the card`);
+    const m = newMotion();
+    m.follow(leg.kind === "drive" ? leg.path : [], "t", leg.kind === "drive" ? leg.face : null);
+    for (let i = 0; i < 3000 && m.getState().status === "moving"; i++) m.advance(0.05);
+    const pose = m.getState().pose;
+    // Facing the card: heading points opposite to the card's facing direction.
+    assert.ok(Math.cos(pose.heading) * -card.facing.x + Math.sin(pose.heading) * -card.facing.y > 0.999, `${id}: squared up`);
+    const f = framing(env, pose);
+    assert.equal(f.cardId, id);
+    assert.ok(f.weight > 0.99);
+    // The card fills most of the frame vertically, and the camera is tilted up to it.
+    const dist = Math.hypot(card.position.x - (pose.x + Math.cos(pose.heading) * M.camForward), card.position.y - (pose.y + Math.sin(pose.heading) * M.camForward));
+    const cardAngle = (2 * Math.atan(SIZE.h / 2 / dist) * 180) / Math.PI;
+    assert.ok(cardAngle / f.fov > 0.7, `${id}: card fills ${Math.round((cardAngle / f.fov) * 100)}% of the view`);
+    assert.ok(f.pitch > M.camPitch);
+  }
+});
+
+test("driving past cards, the camera stays at its normal view", async () => {
+  const { framing, MARTY: M } = await import("../space3d.ts");
+  const f = framing(env, { x: 6, y: 2, heading: 0 });
+  assert.equal(f.cardId, null);
+  assert.equal(f.fov, M.fov);
+});
+
+test("turning to face happens even with no distance left to drive", () => {
+  const m = newMotion();
+  const start = m.getState().pose;
+  m.follow([{ x: start.x, y: start.y }], "t", Math.PI / 2);
+  assert.equal(m.getState().status, "moving");
+  for (let i = 0; i < 100 && m.getState().status === "moving"; i++) m.advance(0.05);
+  assert.equal(m.getState().status, "arrived");
+  assert.ok(Math.abs(m.getState().pose.heading - Math.PI / 2) < 1e-6);
+  assert.equal(m.getState().pose.x, start.x);
+});

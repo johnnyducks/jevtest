@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CardArt, CardArtBody } from "@/lib/cardsight/types";
 import type { Card } from "@/lib/twin/environment";
 
 /** Card artwork for the room, from /api/cards (CardSight AI + any images added in public/cards). */
-export function useCardArt(): Record<string, CardArt> {
+export function useCardArt(): [Record<string, CardArt>, () => void] {
   const [art, setArt] = useState<Record<string, CardArt>>({});
+  const [version, setVersion] = useState(0);
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -25,8 +27,8 @@ export function useCardArt(): Record<string, CardArt> {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, []);
-  return art;
+  }, [version]);
+  return [art, reload];
 }
 
 function Face({ src, label, empty }: { src: string | null; label: string; empty: string }) {

@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ENVIRONMENT } from "../twin/environment";
 import { CardSightError, cardsightConfig, getCard, getCardImage, searchCards } from "./client";
-import { LOOKUP, pickMatch } from "./match";
+import { LOOKUP, MATCHER_VERSION, pickMatch, rejectReason, type SearchHit, searchPlan } from "./match";
 import type { CardArt, CardArtBody } from "./types";
 
 interface StoredMatch {
@@ -20,6 +20,19 @@ interface StoredMatch {
   cardsight?: CardArt["cardsight"];
   reasons?: string[];
   matchedAt: string;
+  /** Matching rules version that produced this entry. */
+  version?: number;
+}
+
+/** What happened for one card, for the "Check card images" screen. */
+export interface CardDiagnosis {
+  cardId: string;
+  name: string;
+  outcome: string;
+  searches: { q: string; filters: string; results: number; error?: string }[];
+  /** Closest catalog results and why each was or wasn't accepted. */
+  candidates: { name: string; year?: string; release?: string; set?: string; number?: string; verdict: string }[];
+  image?: { ok: boolean; detail: string };
 }
 
 const MATCHES = () => path.join(process.cwd(), "data", "cardsight", "matches.json");
@@ -65,35 +78,73 @@ function localImage(cardId: string, side: "front" | "back"): string | null {
   return null;
 }
 
-async function resolve(cardId: string): Promise<StoredMatch> {
+interface Attempt {
+  match: StoredMatch;
+  searches: CardDiagnosis["searches"];
+  hits: SearchHit[];
+}
+
+async function resolve(cardId: string): Promise<Attempt> {
+  const now = () => new Date().toISOString();
   const hint = LOOKUP[cardId];
-  if (!hint) return { status: "not_found", matchedAt: new Date().toISOString(), reasons: ["no lookup hint for this card"] };
+  if (!hint) return { match: { status: "not_found", matchedAt: now(), reasons: ["no lookup hint for this card"], version: MATCHER_VERSION }, searches: [], hits: [] };
   if (hint.id) {
     const d = await getCard(hint.id);
     return {
-      status: "matched",
-      confidence: "exact",
-      cardsight: { id: d.id, name: d.name, number: d.number, setName: d.setName, releaseName: d.releaseName, year: d.releaseYear, description: d.description },
-      reasons: ["pinned in lib/cardsight/match.ts"],
-      matchedAt: new Date().toISOString(),
+      match: {
+        status: "matched",
+        confidence: "exact",
+        cardsight: { id: d.id, name: d.name, number: d.number, setName: d.setName, releaseName: d.releaseName, year: d.releaseYear, description: d.description },
+        reasons: ["pinned in lib/cardsight/match.ts"],
+        matchedAt: now(),
+        version: MATCHER_VERSION,
+      },
+      searches: [],
+      hits: [],
     };
   }
-  const hits = await searchCards(hint.query, hint.years);
-  const m = pickMatch(hint, hits);
-  if (!m) return { status: "not_found", matchedAt: new Date().toISOString(), reasons: [`no certain match among ${hits.length} search results`] };
-  let description: string | undefined;
-  try {
-    description = (await getCard(m.hit.id)).description;
-  } catch {
-    /* details are optional */
+  const searches: CardDiagnosis["searches"] = [];
+  const all: SearchHit[] = [];
+  let lastError: unknown = null;
+  for (const plan of searchPlan(hint)) {
+    const filters = [plan.segment && `segment ${plan.segment}`, plan.years && `year ${plan.years[0] === plan.years[1] ? plan.years[0] : plan.years.join("–")}`].filter(Boolean).join(", ") || "none";
+    let hits: SearchHit[];
+    try {
+      hits = await searchCards(plan.q, { years: plan.years, segment: plan.segment });
+    } catch (e) {
+      // A bad key or rate limit won't get better with another query.
+      if (e instanceof CardSightError && (e.status === 401 || e.status === 403 || e.status === 429 || e.code === "not_configured")) throw e;
+      lastError = e;
+      searches.push({ q: plan.q, filters, results: 0, error: e instanceof Error ? e.message : String(e) });
+      continue;
+    }
+    searches.push({ q: plan.q, filters, results: hits.length });
+    for (const h of hits) if (!all.some((x) => x.id === h.id)) all.push(h);
+    const m = pickMatch(hint, hits);
+    if (!m) continue;
+    let description: string | undefined;
+    try {
+      description = (await getCard(m.hit.id)).description;
+    } catch {
+      /* details are optional */
+    }
+    console.log(`CardSight: ${cardId} → ${m.hit.name} (${m.hit.releaseName ?? m.hit.year} #${m.hit.cardNumber ?? "?"}), ${m.confidence}, via "${plan.q}"`);
+    return {
+      match: {
+        status: "matched",
+        confidence: m.confidence,
+        cardsight: { id: m.hit.id, name: m.hit.name, number: m.hit.cardNumber, setName: m.hit.setName, releaseName: m.hit.releaseName, year: m.hit.year, description },
+        reasons: m.reasons,
+        matchedAt: now(),
+        version: MATCHER_VERSION,
+      },
+      searches,
+      hits: all,
+    };
   }
-  return {
-    status: "matched",
-    confidence: m.confidence,
-    cardsight: { id: m.hit.id, name: m.hit.name, number: m.hit.cardNumber, setName: m.hit.setName, releaseName: m.hit.releaseName, year: m.hit.year, description },
-    reasons: m.reasons,
-    matchedAt: new Date().toISOString(),
-  };
+  if (lastError && !all.length) throw lastError;
+  console.log(`CardSight: ${cardId} → no certain match (${all.length} results across ${searches.length} searches). Open "Check card images" in the bot menu for details.`);
+  return { match: { status: "not_found", matchedAt: now(), reasons: [`no certain match among ${all.length} search results`], version: MATCHER_VERSION }, searches, hits: all };
 }
 
 function toArt(cardId: string, s: StoredMatch | undefined, note?: string): CardArt {
@@ -117,21 +168,22 @@ function toArt(cardId: string, s: StoredMatch | undefined, note?: string): CardA
 async function artFor(cardId: string): Promise<CardArt> {
   const st = state();
   const stored = st.stored[cardId];
-  const fresh = stored && (stored.status === "matched" || Date.now() - Date.parse(stored.matchedAt) < RETRY_NOT_FOUND_MS);
+  const fresh =
+    stored && (stored.status === "matched" || (stored.version === MATCHER_VERSION && Date.now() - Date.parse(stored.matchedAt) < RETRY_NOT_FOUND_MS));
   if (fresh || !cardsightConfig().configured) return toArt(cardId, stored);
   const err = st.errors.get(cardId);
   if (err && Date.now() - err.at < RETRY_ERROR_MS) return toArt(cardId, stored, err.note);
   let p = st.inflight.get(cardId);
   if (!p) {
     p = resolve(cardId)
-      .then((m) => {
+      .then(({ match: m }) => {
         st.stored[cardId] = m;
         st.errors.delete(cardId);
         save();
         return toArt(cardId, m);
       })
       .catch((e: unknown) => {
-        const note = e instanceof CardSightError ? (e.status === 401 || e.status === 403 ? "CardSight rejected the API key." : e.status === 429 ? "CardSight rate limit reached; will retry." : e.message) : "CardSight lookup failed.";
+        const note = errorNote(e);
         console.warn(`CardSight lookup for ${cardId} failed: ${e instanceof Error ? e.message : e}`);
         st.errors.set(cardId, { at: Date.now(), note });
         return toArt(cardId, stored, note);
@@ -181,4 +233,71 @@ export async function frontImage(cardId: string): Promise<{ bytes: ArrayBuffer; 
     if (e instanceof CardSightError && e.status === 404) return null;
     throw e;
   }
+}
+
+function errorNote(e: unknown): string {
+  if (!(e instanceof CardSightError)) return "CardSight lookup failed.";
+  if (e.status === 401 || e.status === 403) return `CardSight rejected the API key (HTTP ${e.status}: ${e.message}).`;
+  if (e.status === 429) return "CardSight rate limit reached; will retry.";
+  if (e.code === "network") return `Couldn't reach CardSight (${e.message}).`;
+  return e.message;
+}
+
+const tierOf = (hint: (typeof LOOKUP)[string], h: SearchHit) => {
+  const words = hint.nameWords.filter((w) => ` ${h.name.toLowerCase()} `.includes(w)).length;
+  return words * 10 + (rejectReason(hint, h) === null ? 100 : 0);
+};
+
+/**
+ * Look every card up again (ignoring saved results) and report what CardSight
+ * returned and why each candidate was accepted or rejected. Also checks that
+ * each matched card's image downloads. Saves any new matches.
+ */
+export async function diagnoseAll(): Promise<{ configured: boolean; base: string; keyLength: number; cards: CardDiagnosis[] }> {
+  const cfg = cardsightConfig();
+  const out: CardDiagnosis[] = [];
+  const st = state();
+  for (const card of ENVIRONMENT.cards) {
+    const hint = LOOKUP[card.id];
+    const d: CardDiagnosis = { cardId: card.id, name: card.name, outcome: "", searches: [], candidates: [] };
+    if (!cfg.configured) {
+      d.outcome = "CARDSIGHT_API_KEY is not set on the server.";
+      out.push(d);
+      continue;
+    }
+    try {
+      const r = await resolve(card.id);
+      d.searches = r.searches;
+      const m = r.match;
+      d.outcome = m.status === "matched" ? `Matched (${m.confidence}): ${m.cardsight?.name}, ${m.cardsight?.releaseName ?? m.cardsight?.year ?? ""} #${m.cardsight?.number ?? "?"}` : "No certain match.";
+      if (hint) {
+        d.candidates = [...r.hits]
+          .sort((a, b) => tierOf(hint, b) - tierOf(hint, a))
+          .slice(0, 8)
+          .map((h) => ({
+            name: h.name,
+            year: h.year,
+            release: h.releaseName,
+            set: h.setName,
+            number: h.cardNumber,
+            verdict: h.id === m.cardsight?.id ? "chosen" : (rejectReason(hint, h) ?? (hint.number && h.cardNumber ? `card #${h.cardNumber}, wanted #${hint.number}` : "acceptable")),
+          }));
+      }
+      st.stored[card.id] = m;
+      st.errors.delete(card.id);
+      if (m.status === "matched") {
+        try {
+          const img = await frontImage(card.id);
+          d.image = img ? { ok: true, detail: `${img.contentType}, ${Math.round(img.bytes.byteLength / 1024)} KB` } : { ok: false, detail: "CardSight has no image for this card" };
+        } catch (e) {
+          d.image = { ok: false, detail: errorNote(e) };
+        }
+      }
+    } catch (e) {
+      d.outcome = errorNote(e);
+    }
+    out.push(d);
+  }
+  save();
+  return { configured: cfg.configured, base: cfg.base, keyLength: cfg.apiKey.length, cards: out };
 }

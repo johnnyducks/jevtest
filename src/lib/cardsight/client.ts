@@ -9,7 +9,8 @@ const DEFAULT_BASE = "https://api.cardsight.ai";
 const TIMEOUT_MS = 15_000;
 
 export function cardsightConfig() {
-  const apiKey = process.env.CARDSIGHT_API_KEY || process.env.CARDSIGHTAI_API_KEY || "";
+  // Trim stray spaces and quotes from copy-pasting the key into .env.local.
+  const apiKey = (process.env.CARDSIGHT_API_KEY || process.env.CARDSIGHTAI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
   return { apiKey, configured: apiKey.length > 0, base: (process.env.CARDSIGHT_API_BASE || DEFAULT_BASE).replace(/\/+$/, "") };
 }
 
@@ -44,17 +45,22 @@ async function get(path: string, accept = "application/json"): Promise<Response>
   return res;
 }
 
-/** GET /v1/catalog/search, cards only, baseball. */
-export async function searchCards(q: string, years: [number, number]): Promise<SearchHit[]> {
-  const params = new URLSearchParams({ q, type: "card", segment: "Baseball", take: "50" });
-  if (years[0] === years[1]) params.set("year", String(years[0]));
-  else {
-    params.set("min_year", String(years[0]));
-    params.set("max_year", String(years[1]));
+/** GET /v1/catalog/search for cards. Year range and segment are optional filters. */
+export async function searchCards(q: string, opts: { years?: [number, number]; segment?: string } = {}): Promise<SearchHit[]> {
+  const params = new URLSearchParams({ q, type: "card", take: "100" });
+  if (opts.segment) params.set("segment", opts.segment);
+  if (opts.years) {
+    if (opts.years[0] === opts.years[1]) params.set("year", String(opts.years[0]));
+    else {
+      params.set("min_year", String(opts.years[0]));
+      params.set("max_year", String(opts.years[1]));
+    }
   }
   const res = await get(`/v1/catalog/search?${params}`);
-  const json = (await res.json()) as { results?: SearchHit[] };
-  return Array.isArray(json.results) ? json.results : [];
+  const json = (await res.json()) as { results?: SearchHit[]; data?: SearchHit[] } | SearchHit[];
+  // Accept the documented shape ({ results }) and, defensively, a bare array.
+  const list = Array.isArray(json) ? json : (json.results ?? json.data ?? []);
+  return Array.isArray(list) ? list : [];
 }
 
 export interface CardDetail {

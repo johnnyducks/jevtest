@@ -40,7 +40,7 @@ export const LOOKUP: Record<string, LookupHint> = {
 
 /** One card result from CardSight's catalog search (the fields we use). */
 export interface SearchHit {
-  type: string;
+  type?: string;
   id: string;
   name: string;
   year?: string;
@@ -49,7 +49,7 @@ export interface SearchHit {
   manufacturerName?: string;
   parallelName?: string;
   cardNumber?: string;
-  relevance: number;
+  relevance?: number;
 }
 
 export interface MatchResult {
@@ -69,20 +69,35 @@ const norm = (s: string | undefined) =>
 
 const normNumber = (s: string | undefined) => norm(s).replace(/\s+/g, "").replace(/^#/, "");
 
+/** Year of a hit: its year field, else the first year in its release name ("1989 Upper Deck"). */
+export function hitYear(h: SearchHit): number | null {
+  const y = Number.parseInt(h.year ?? "", 10);
+  if (Number.isFinite(y)) return y;
+  const m = /\b(18[6-9]\d|19\d\d|20\d\d)\b/.exec(`${h.releaseName ?? ""} ${h.setName ?? ""}`);
+  return m ? Number(m[1]) : null;
+}
+
+/** Why a search hit is not this card, or null when it passes every check (number aside). */
+export function rejectReason(hint: LookupHint, h: SearchHit): string | null {
+  if (h.type && h.type !== "card") return `is a ${h.type}, not a card`;
+  const name = ` ${norm(h.name)} `;
+  const missing = hint.nameWords.filter((w) => !name.includes(` ${w} `));
+  if (missing.length) return `name "${h.name}" lacks "${missing.join(" ")}"`;
+  const year = hitYear(h);
+  if (year === null) return "no year";
+  if (year < hint.years[0] || year > hint.years[1]) return `year ${year}, wanted ${hint.years[0] === hint.years[1] ? hint.years[0] : hint.years.join("–")}`;
+  if (hint.release) {
+    const rel = ` ${norm(`${h.releaseName ?? ""} ${h.manufacturerName ?? ""} ${h.setName ?? ""}`)} `;
+    const lacking = hint.release.filter((w) => !(rel.includes(` ${w} `) || rel.replace(/ /g, "").includes(w)));
+    if (lacking.length) return `release "${[h.releaseName, h.setName].filter(Boolean).join(" / ")}" lacks "${lacking.join(" ")}"`;
+  }
+  if (h.parallelName) return `parallel (${h.parallelName}), not the base card`;
+  return null;
+}
+
 /** Pick the catalog card that matches the hint, or null when nothing is certain enough. */
 export function pickMatch(hint: LookupHint, hits: SearchHit[]): MatchResult | null {
-  const ok = hits.filter((h) => {
-    if (h.type !== "card") return false;
-    const name = ` ${norm(h.name)} `;
-    if (!hint.nameWords.every((w) => name.includes(` ${w} `))) return false;
-    const year = Number.parseInt(h.year ?? "", 10);
-    if (!(year >= hint.years[0] && year <= hint.years[1])) return false;
-    if (hint.release) {
-      const rel = ` ${norm(`${h.releaseName ?? ""} ${h.manufacturerName ?? ""} ${h.setName ?? ""}`)} `;
-      if (!hint.release.every((w) => rel.includes(` ${w} `) || rel.replace(/ /g, "").includes(w))) return false;
-    }
-    return !h.parallelName; // the base card, not a parallel
-  });
+  const ok = hits.filter((h) => rejectReason(hint, h) === null);
   if (!ok.length) return null;
 
   const byNumber = hint.number ? ok.filter((h) => normNumber(h.cardNumber) === normNumber(hint.number)) : [];
@@ -102,8 +117,29 @@ export function pickMatch(hint: LookupHint, hits: SearchHit[]): MatchResult | nu
   return { hit: best, confidence: "likely", reasons: ["name, year and release match; card number not available to confirm"] };
 }
 
+/** Searches to try, most specific first. The first that yields a match wins. */
+export function searchPlan(hint: LookupHint): { q: string; years?: [number, number]; segment?: string }[] {
+  const who = hint.query.replace(/\b(18|19|20)\d\d\b/g, "").replace(/\s+/g, " ").trim();
+  const plans = [
+    { q: hint.query, years: hint.years, segment: "Baseball" },
+    { q: hint.query },
+    { q: `${hint.years[0]} ${hint.nameWords.join(" ")}` },
+    { q: who },
+  ];
+  const seen = new Set<string>();
+  return plans.filter((p) => {
+    const k = JSON.stringify(p);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** Base set first, then CardSight's own relevance. */
 function rank(a: SearchHit, b: SearchHit) {
   const base = (h: SearchHit) => (/^base\b/i.test(h.setName ?? "") ? 0 : 1);
-  return base(a) - base(b) || b.relevance - a.relevance;
+  return base(a) - base(b) || (b.relevance ?? 0) - (a.relevance ?? 0);
 }
+
+/** Bump when matching rules change, so earlier "no match" results are looked up again. */
+export const MATCHER_VERSION = 2;

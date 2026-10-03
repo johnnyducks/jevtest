@@ -52,3 +52,21 @@ test("cards without a known number: likely match, base set preferred", () => {
   assert.equal(m?.hit.id, "base");
   assert.equal(m?.confidence, "likely");
 });
+
+test("missing year field: the year is read from the release name", () => {
+  const m = pickMatch(LOOKUP["griffey-89"], [hit({ name: "Ken Griffey Jr.", year: undefined, releaseName: "1989 Upper Deck", cardNumber: "1" })]);
+  assert.equal(m?.confidence, "exact");
+});
+
+test("rejection reasons are specific, for the 'Check card images' screen", async () => {
+  const { rejectReason, searchPlan } = await import("../match.ts");
+  const h = LOOKUP["mantle-52"];
+  assert.match(rejectReason(h, hit({ year: "1953" }))!, /year 1953, wanted 1952/);
+  assert.match(rejectReason(h, hit({ releaseName: "1952 Bowman", setName: "Base" }))!, /lacks "topps"/);
+  assert.equal(rejectReason(h, hit({})), null);
+  // Several searches, most specific first, never duplicated.
+  const plans = searchPlan(h);
+  assert.ok(plans.length >= 3);
+  assert.equal(plans[0].segment, "Baseball");
+  assert.equal(new Set(plans.map((p) => JSON.stringify(p))).size, plans.length);
+});

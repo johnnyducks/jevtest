@@ -15,7 +15,7 @@ import type { CardArt } from "@/lib/cardsight/types";
 import type { PublicTrip } from "@/lib/live/types";
 import type { Card, Environment, Obstacle, Pose } from "@/lib/twin/environment";
 import type { MotionStatus } from "@/lib/twin/motion";
-import { CARD_SIZE, cardPlacement, fpvCamera, HEIGHTS, MARTY, obstacleBox, toScene, type V3 } from "@/lib/twin/space3d";
+import { CARD_SIZE, cardPlacement, fpvCamera, framing, HEIGHTS, MARTY, obstacleBox, toScene, type V3 } from "@/lib/twin/space3d";
 
 export type CameraMode = "fpv" | "orbit";
 
@@ -307,7 +307,8 @@ function CardFrame({ env, card, src, bonus, target, onGo }: { env: Environment; 
   };
   return (
     <group position={place.center} rotation-y={place.yaw}>
-      <mesh position={[0, 0, -0.006]} castShadow>
+      {/* Frame sits just behind the card face (never at the same depth, which would flicker up close). */}
+      <mesh position={[0, 0, -0.009]} castShadow>
         <boxGeometry args={[w + 0.03, CARD_SIZE.h + 0.03, 0.012]} />
         <meshStandardMaterial color={rim} emissive={rim} emissiveIntensity={target || bonus ? 0.45 : 0.1} />
       </mesh>
@@ -399,6 +400,7 @@ function CameraRig({ mode, poseRef, env }: { mode: CameraMode; poseRef: React.Re
   const { camera, gl } = useThree();
   const controls = useRef<OrbitControls | null>(null);
   const yaw = useRef<number | null>(null);
+  const pitch = useRef<number>(MARTY.camPitch);
 
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
@@ -439,7 +441,17 @@ function CameraRig({ mode, poseRef, env }: { mode: CameraMode; poseRef: React.Re
     const k = 1 - Math.exp(-dt / 0.06);
     if (yaw.current === null) yaw.current = p.heading;
     yaw.current += Math.atan2(Math.sin(p.heading - yaw.current), Math.cos(p.heading - yaw.current)) * k;
-    const cam = fpvCamera({ ...p, heading: yaw.current });
+    // In front of a card: tilt up and zoom so it fills the frame (eased, ~0.4 s).
+    const f = framing(env, p);
+    const kf = 1 - Math.exp(-dt / 0.25);
+    pitch.current += (f.pitch - pitch.current) * kf;
+    const cam3 = camera as THREE.PerspectiveCamera;
+    const fov = cam3.fov + (f.fov - cam3.fov) * kf;
+    if (Math.abs(fov - cam3.fov) > 0.01) {
+      cam3.fov = fov;
+      cam3.updateProjectionMatrix();
+    }
+    const cam = fpvCamera({ ...p, heading: yaw.current }, pitch.current);
     camera.position.set(...cam.position);
     camera.lookAt(...cam.target);
   });
@@ -489,6 +501,8 @@ function Labels({ env, slots, mode, trip, poseRef }: { env: Environment; slots: 
     if (!s) return;
     camera.getWorldDirection(dir);
     const pose = poseRef.current;
+    // The card filling the FPV frame, if any.
+    const framed = mode === "fpv" && pose ? framing(env, pose).cardId : null;
     for (const c of env.cards) {
       const el = s.cards.get(c.id);
       const a = anchors.get(c.id)!;
@@ -497,7 +511,8 @@ function Labels({ env, slots, mode, trip, poseRef }: { env: Environment; slots: 
       const ahead = toCard.dot(dir) > 0;
       // FPV: label what Marty can plausibly "see": in front, within 4.5 m. Observer: everything on screen.
       const near = !pose || Math.hypot(c.position.x - pose.x, c.position.y - pose.y) < 4.5;
-      place(el, a, ahead && (mode === "orbit" || near));
+      // While a card fills the frame, other labels (possibly behind it) would only clutter the view.
+      place(el, a, ahead && !framed && (mode === "orbit" || near));
     }
     if (s.next) {
       if (!nextStop) place(s.next, v, false);

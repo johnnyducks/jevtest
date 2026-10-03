@@ -9,6 +9,7 @@ import { makeTransform } from "@/lib/twin/geometry";
 import { buildGrid } from "@/lib/twin/grid";
 import { Gear, Help, Send } from "../icons";
 import { CardHover, CardModal, useCardArt } from "../cards/CardArt";
+import CardCheck from "../cards/CardCheck";
 import Popover from "../Popover";
 import TwinMap from "../twin/TwinMap";
 import LiveChat from "./LiveChat";
@@ -131,7 +132,8 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   const [notice, setNotice] = useState<{ kind: "info" | "warn"; text: string } | null>(null);
   const [showClearance, setShowClearance] = useState(true);
   const [sending, setSending] = useState(false);
-  const art = useCardArt();
+  const [art, reloadArt] = useCardArt();
+  const [checking, setChecking] = useState(false);
   const [hoverCard, setHoverCard] = useState<{ card: Card; at: { x: number; y: number } } | null>(null);
   const [openCard, setOpenCard] = useState<Card | null>(null);
 
@@ -317,6 +319,12 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
                 <input type="checkbox" checked={showClearance} onChange={(e) => setShowClearance(e.target.checked)} />
                 <span className="tm-label">Clearance zones</span>
               </label>
+              <div className="pop-ctl">
+                <span className="tm-label">Cards</span>
+                <button className="btn" onClick={() => setChecking(true)} disabled={!canOperate}>
+                  Check card images
+                </button>
+              </div>
               {!canOperate && <p className="pop-warn">Enter the operator key to use these controls.</p>}
             </Popover>
           </div>
@@ -415,6 +423,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
           points={(snap.game.cardPoints[hoverCard.card.id] ?? 0) + (snap.game.bonuses.find((b) => b.cardId === hoverCard.card.id)?.points ?? 0)}
         />
       )}
+      {checking && <CardCheck opKey={opKey} onClose={() => setChecking(false)} onDone={reloadArt} />}
       {openCard && (
         <CardModal
           card={openCard}

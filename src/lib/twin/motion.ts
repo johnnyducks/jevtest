@@ -23,6 +23,8 @@ export interface MotionState {
   missionId: string | null;
   /** Distance travelled on the current route, meters. */
   travelled: number;
+  /** Heading to turn to after the last waypoint (e.g. to face a card), radians; null = keep the travel heading. */
+  face: number | null;
   /** "simulated" for this prototype; a hardware adapter would report "telemetry". */
   source: "simulated";
 }
@@ -33,8 +35,8 @@ export interface PoseSource {
 }
 
 export interface MotionCommands {
-  /** Start following `path` for `missionId`. Cancels any previous motion. */
-  follow(path: Vec[], missionId: string): void;
+  /** Start following `path` for `missionId`, then turn to `face` if given. Cancels any previous motion. */
+  follow(path: Vec[], missionId: string, face?: number | null): void;
   /** Halt immediately. Leaves Marty where it is. */
   stop(): void;
   /** Place Marty (only valid while not moving). */
@@ -90,7 +92,14 @@ export function step(state: MotionState, dt: number, p: MotionParams): MotionSta
     if (move >= d - 1e-9) wp++;
   }
 
-  const arrived = wp >= state.path.length;
+  let arrived = wp >= state.path.length;
+  // At the end of the route, turn in place to the requested heading (e.g. square up to a card).
+  if (arrived && state.face !== null && state.face !== undefined) {
+    const err = wrapAngle(state.face - heading);
+    const turn = Math.min(Math.abs(err), p.turnRate * Math.max(0, budget));
+    heading = wrapAngle(heading + Math.sign(err) * turn);
+    if (Math.abs(err) - turn > 1e-4) arrived = false;
+  }
   return {
     ...state,
     pose: { x, y, heading },
@@ -129,7 +138,7 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
   constructor(initial: Pose, scheduler: Scheduler = defaultScheduler, params: MotionParams = DEFAULT_PARAMS) {
     this.scheduler = scheduler;
     this.params = { ...params };
-    this.state = { pose: { ...initial }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0, source: "simulated" };
+    this.state = { pose: { ...initial }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0, face: null, source: "simulated" };
   }
 
   getState = () => this.state;
@@ -151,11 +160,13 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
     this.frame = null;
   }
 
-  follow(path: Vec[], missionId: string) {
+  follow(path: Vec[], missionId: string, face: number | null = null) {
     this.cancelFrame();
     const run = ++this.run;
-    this.emit({ ...this.state, status: path.length > 1 ? "moving" : "arrived", path, waypoint: 1, missionId, travelled: 0 });
-    if (path.length <= 1) return;
+    const turning = face !== null && Math.abs(wrapAngle(face - this.state.pose.heading)) > 1e-4;
+    const moving = path.length > 1 || turning;
+    this.emit({ ...this.state, status: moving ? "moving" : "arrived", path, waypoint: 1, missionId, travelled: 0, face });
+    if (!moving) return;
     this.last = this.scheduler.now();
     const tick = (now: number) => {
       if (run !== this.run) return; // stale callback from a cancelled mission
@@ -183,7 +194,7 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
   setPose(pose: Pose) {
     this.cancelFrame();
     this.run++;
-    this.emit({ ...this.state, pose: { ...pose }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0 });
+    this.emit({ ...this.state, pose: { ...pose }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0, face: null });
   }
 
   setSpeed(mps: number) {
