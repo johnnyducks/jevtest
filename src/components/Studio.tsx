@@ -5,6 +5,7 @@ import type { StatusBody } from "@/lib/decision/contracts";
 import { Bot, Logo } from "./icons";
 import Popover from "./Popover";
 import LiveView from "./live/LiveView";
+import ThemeToggle from "./ThemeToggle";
 
 /** App shell: brand, a bot icon listing the models in use, and the map workspace. */
 export default function Studio() {
@@ -27,6 +28,7 @@ export default function Studio() {
           <span className="brand-name">MARTY.LIVE</span>
         </div>
         <div className="topbar-spacer" />
+        <ThemeToggle />
         <Popover
           label="Models in use"
           align="right"

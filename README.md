@@ -248,6 +248,10 @@ Wikipedia supplements the statistics with biography and trivia:
 - **Wikipedia:** CC BY-SA 4.0. Messages using Wikipedia facts link to the article; the revision and retrieval date appear on hover.
 - Before any commercial use, review the current terms on SABR's Lahman page. The 2025 release includes Negro Leagues data licensed from Seamheads, which may carry its own terms. Also check that share-alike obligations fit your product.
 
+### Light and dark mode
+
+The ☀ / ☾ button in the top bar switches between light and dark. The first time you visit, the app follows your computer's setting (macOS: System Settings → Appearance); after you press the button it remembers your choice in that browser. The 3D views recolour too. Colours live as variables at the top of `src/app/globals.css` (`:root` for dark, `:root[data-theme="light"]` for light), so tweaking the light palette is a one-place edit.
+
 ### Succulents
 
 Nine potted succulents decorate the building. Five small bowls sit on furniture next to cards: the lobby desk, the '80s display case, the '70s shelf, the '50s gallery case and the vault pedestal. Four bigger pots stand in floor corners by the wall cards. The floor pots are small obstacles that Marty drives around. Every card that was reachable still is (there's a test for it). They show up as little rosettes on the 2D map and as potted plants in 3D and FPV. Positions are in `DECOR` in `src/lib/twin/environment.ts`.
