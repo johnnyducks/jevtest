@@ -10,11 +10,12 @@ test("multi-stop request: Jev decides, Marty visits every stop in order and the 
   const trip = s.snapshot().trip!;
   assert.equal(trip.summary, "Cal Ripken Jr. → Barry Bonds → Mickey Mantle");
   assert.equal(trip.status, "running");
-  await run(60);
+  await run(300, 200);
   const done = s.snapshot();
   assert.equal(done.trip!.status, "done");
   assert.deepEqual(done.trip!.stops.map((x) => x.done), [true, true, true]);
   assert.deepEqual(done.game.scores, [{ handle: "amy", points: 25 + 20 + 60 }]);
+  assert.equal(done.telemetry.floor, 5, "Mantle is on floor 5");
   assert.match(martyLines(s)[0], /@amy's tour \(Cal Ripken Jr\. → Barry Bonds → Mickey Mantle\)/);
   assert.ok(systemLines(s).some((l) => l.includes("+60 for @amy at Mickey Mantle")));
 });
@@ -27,9 +28,9 @@ test("battery drains by the distance actually driven, close to the route estimat
   await run(40);
   const tel = s.snapshot().telemetry;
   const used = 100 - tel.battery.level;
-  assert.ok(Math.abs(tel.metersDriven - est.meters) < 0.3, `drove ${tel.metersDriven} m, planned ${est.meters} m`);
-  assert.ok(Math.abs(used - est.battery) < 0.6, `used ${used}%, estimated ${est.battery}%`);
-  assert.ok(Math.abs(tel.battery.range - (tel.battery.level - 10) / 0.6) < 0.2, "range = battery above reserve ÷ 0.6% per meter");
+  assert.ok(Math.abs(tel.metersDriven - est.meters) < 0.05, `drove ${tel.metersDriven} m, planned ${est.meters} m`);
+  assert.ok(Math.abs(used - est.battery) < 0.3, `used ${used}%, estimated ${est.battery}%`);
+  assert.ok(Math.abs(tel.battery.range - (tel.battery.level - 10) / 2.5) < 0.02, "range = battery above reserve ÷ 2.5% per meter");
 });
 
 test("typos are corrected deterministically and shown: heanderson → Henderson", async () => {
@@ -50,19 +51,19 @@ test("Jev's 'too taxing' judgment declines upstairs; Marty explains and does the
   await run(1.2);
   assert.equal(s.snapshot().trip!.summary, "Pete Rose");
   const line = martyLines(s)[0];
-  assert.match(line, /I considered @amy's trip to the mezzanine \(upstairs\), but Jev judged it too taxing right now \(80%\)\./);
+  assert.match(line, /I considered @amy's trip to floor 2 \(The '80s & '90s\), but Jev judged it too taxing right now \(80%\)\./);
   assert.match(line, /Let's do @bob's trip to Pete Rose instead/);
   const trace = s.snapshot().chat.find((c) => c.kind === "marty" && c.decision);
   assert.ok(trace && trace.kind === "marty" && trace.decision!.considered.some((o) => o.handle === "amy" && o.status === "declined"));
 });
 
-test("battery reserve rule (incl. the way home) blocks a long lap even when Jev prefers it", async () => {
+test("battery reserve rule (incl. the way home) blocks a climb to the top floor even when Jev prefers it", async () => {
   const { s, run } = makeSession();
   s.operator({ action: "battery", level: 30 });
-  s.post("amy", "do a lap around the room");
+  s.post("amy", "take me to the vault");
   await run(1.2);
   assert.equal(s.snapshot().trip, null, "Marty stays put");
-  assert.match(martyLines(s)[0], /I considered @amy's lap around the room, but it needs about \d+% plus \d+% to get back to the dock, and I'm at 30% with a 10% reserve/);
+  assert.match(martyLines(s)[0], /I considered @amy's trip to floor 6 \(The Vault · Pre-war\), but it needs about \d+% plus \d+% to get back to the dock, and I'm at 30% with a 10% reserve/);
 });
 
 test("trips over the time limit are declined", async () => {
@@ -81,10 +82,10 @@ test("lower-ranked requests wait in the queue and run after the current trip", a
   assert.equal(s.snapshot().trip!.handle, "amy");
   assert.deepEqual(s.snapshot().queue.map((q) => q.handle), ["bob"]);
   assert.match(martyLines(s)[0], /@bob: you're in the queue/);
-  await run(40);
+  await run(60, 200);
   assert.ok(jev.calls.length >= 2, "queued request reconsidered");
   assert.equal(s.snapshot().trip!.handle, "bob");
-  await run(30);
+  await run(200, 200);
   assert.deepEqual(s.snapshot().game.scores.map((x) => x.handle).sort(), ["amy", "bob"]);
 });
 
@@ -188,23 +189,26 @@ test("operator stop and resume finish the remaining stops", async () => {
   assert.equal(s.operator({ action: "stop" }).ok, true);
   assert.equal(s.snapshot().trip!.status, "stopped");
   assert.equal(s.motion.getState().status, "stopped");
+  // About 4 s in, Marty is part-way up the first ramp: resume finishes the climb, then the rest.
+  assert.ok(s.snapshot().trip!.legs.find((l) => !l.done)?.ramp, "stopped on the ramp");
   assert.equal(s.operator({ action: "resume" }).ok, true);
   assert.equal(s.snapshot().trip!.summary, "Cal Ripken Jr. → Mickey Mantle");
-  await run(60);
+  await run(300, 200);
   assert.equal(s.snapshot().trip!.status, "done");
+  assert.deepEqual(s.snapshot().game.scores, [{ handle: "amy", points: 25 + 60 }]);
 });
 
 test("low battery after a trip sends Marty to the dock, where he charges", async () => {
   const { s, run } = makeSession();
   s.operator({ action: "battery", level: 22 });
-  s.post("amy", "go to rose");
+  s.post("amy", "go to trout");
   await run(1.2);
-  assert.equal(s.snapshot().trip!.summary, "Pete Rose");
+  assert.equal(s.snapshot().trip!.summary, "Mike Trout");
   await run(25);
   assert.ok(systemLines(s).some((l) => l.startsWith("Rule B3")));
   await run(25);
   const tel = s.snapshot().telemetry;
-  assert.ok(Math.hypot(tel.pose.x - 0.9, tel.pose.y - 0.9) < 0.45, "at the dock");
+  assert.ok(Math.hypot(tel.pose.x - 0.13, tel.pose.y - 0.5) < 0.05, "at the dock");
   assert.equal(tel.battery.charging, true);
   const before = tel.battery.level;
   await run(2);
@@ -218,7 +222,7 @@ test("bonuses spawn, show in chat, and pay out to the viewer who sent Marty ther
   assert.ok(bonus, "a bonus spawned");
   assert.ok(systemLines(s).some((l) => l.startsWith("Bonus!") && l.includes(bonus.cardName)));
   s.post("amy", `go to ${bonus.cardName}`);
-  await run(60);
+  await run(300, 200);
   const card = s.snapshot().game.scores.find((x) => x.handle === "amy");
   assert.ok(card && card.points >= bonus.points, "bonus included");
 });
@@ -233,7 +237,8 @@ test("reset clears chat, trip, scores and battery", async () => {
   assert.equal(snap.trip, null);
   assert.equal(snap.game.total, 0);
   assert.equal(snap.telemetry.battery.level, 100);
-  assert.deepEqual(snap.telemetry.pose, { x: 1.2, y: 1.4, heading: 0 });
+  assert.deepEqual(snap.telemetry.pose, { x: 0.3, y: 0.5, heading: 0 });
+  assert.equal(snap.telemetry.floor, 1);
 });
 
 test("every viewer gets the snapshot on subscribe and live events after", async () => {
@@ -251,4 +256,54 @@ test("every viewer gets the snapshot on subscribe and live events after", async 
     assert.equal(list[0], "snapshot");
     assert.ok(list.includes("chat") && list.includes("telemetry") && list.includes("trip"));
   }
+});
+
+test("climbing a ramp: height rises smoothly, the floor changes on arrival, and climbing costs extra battery", async () => {
+  const { s, run } = makeSession();
+  s.post("amy", "upstairs");
+  await run(1.2);
+  let between = false;
+  for (let i = 0; i < 60 && s.snapshot().telemetry.floor === 1; i++) {
+    await run(0.5);
+    const l = s.snapshot().telemetry.level;
+    if (l > 1.05 && l < 1.95) between = true;
+  }
+  assert.ok(between, "seen part-way up the ramp");
+  await run(20);
+  const tel = s.snapshot().telemetry;
+  assert.equal(tel.floor, 2);
+  assert.equal(tel.level, 2);
+  const drivingOnly = tel.metersDriven * 2.5;
+  assert.ok(100 - tel.battery.level > drivingOnly + 2.5, "the climb cost more than flat driving");
+});
+
+test("distances in Marty's lines are unit markers, so each viewer sees their own units", async () => {
+  const { renderUnits } = await import("../../units.ts");
+  const { s, run } = makeSession();
+  s.post("amy", "go to griffey");
+  await run(1.2);
+  const line = martyLines(s)[0];
+  assert.match(line, /\{\{m:[\d.]+\}\}/);
+  assert.match(renderUnits(line, "imperial"), /about [\d.]+ (in|ft)/);
+  assert.match(renderUnits(line, "metric"), /about [\d.]+ (cm|m)/);
+});
+
+test("when nobody talks, Marty thinks out loud, less and less often, and only with someone watching", async () => {
+  const { s, run } = makeSession({ config: { idleAfterMs: 10_000, idleMaxMs: 80_000 } });
+  await run(15, 500);
+  assert.equal(s.snapshot().chat.length, 0, "no audience, no musing");
+  s.subscribe(() => {});
+  await run(11, 500);
+  const idle = () => s.snapshot().chat.filter((c) => c.kind === "marty" && c.idle).length;
+  assert.equal(idle(), 1, "quiet for 15 s with someone watching: first musing");
+  await run(5, 500);
+  assert.equal(idle(), 1, "the next one waits twice as long (20 s)");
+  await run(10, 500);
+  assert.equal(idle(), 2);
+  // A viewer speaking resets the clock.
+  s.post("amy", "hi marty");
+  await run(9, 500);
+  assert.equal(idle(), 2);
+  const lines = s.snapshot().chat.filter((c) => c.kind === "marty" && c.idle).map((c) => (c as { text: string }).text);
+  assert.notEqual(lines[0], lines[1], "different musings");
 });

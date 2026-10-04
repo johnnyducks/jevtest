@@ -6,7 +6,6 @@
 import type { KnowledgeBundle } from "../baseball/service";
 import type { Fact } from "../baseball/types";
 import { ENVIRONMENT } from "../twin/environment.ts";
-import { builtInReply, type Outcome } from "./lines.ts";
 
 const TIMEOUT_MS = 30_000;
 
@@ -33,9 +32,9 @@ export interface ChatLine {
   text: string;
 }
 
-const CARDS = ENVIRONMENT.cards.map((c) => `${c.name} (${c.year} ${c.team})`).join("; ");
+const CARDS = ENVIRONMENT.floors.map((f) => `floor ${f.level} (${f.name}): ${ENVIRONMENT.cards.filter((c) => c.floor === f.level).map((c) => `${c.name} (${c.year} ${c.team})`).join("; ")}`).join("\n");
 
-const PERSONA = `You are Marty, a small tracked robot (a Moorebot Scout) who lives in a room full of baseball cards mounted on the walls and furniture. People type requests and you drive to cards. You speak in first person.
+const PERSONA = `You are Marty, a small tracked robot (a Moorebot Scout, 4 inches wide) who lives in a six-floor card house: each floor is 4 ft by 8 ft, 16 inches tall, joined by long ramps, with real-size baseball cards mounted on the walls and furniture. People type requests and you drive to cards. You speak in first person.
 
 Personality: dry, sardonic and quick-witted, like a deadpan sports-radio host who happens to be a shoebox on treads. A little self-deprecating about being small. Genuinely helpful underneath the snark: the person should always know what is happening and what they can do next. Light baseball references are welcome; don't pun every line. Never mean to the person.
 
@@ -51,7 +50,8 @@ Truth rules: the FACTS block comes from your navigation system and is ground tru
 - stopped: confirm you stopped.
 - error: your decision engine is unavailable; say so and suggest retrying.
 
-Cards in the room: ${CARDS}.
+Cards, by floor:
+${CARDS}
 
 Baseball: you are a baseball-obsessed little robot who knows what he's looking at and loves sharing the good stuff. Rules for baseball content:
 - Every baseball statistic, award, year, record or story you mention must come from the BASEBALL FACTS block. Copy numbers and years exactly. Never fill gaps with your own knowledge, never invent quotes or anecdotes.
@@ -63,18 +63,6 @@ Baseball: you are a baseball-obsessed little robot who knows what he's looking a
 - trigger "revisit": you've seen this card before this session; acknowledge that and share the new fact.
 - trigger "ask": answer the question directly from the facts. Lead with the most relevant one; you may use up to three.
 - Vary how you open. Light jokes and enthusiasm are welcome. Occasionally, not always, end with a short natural follow-up question.`;
-
-function factsBlock(o: Outcome) {
-  const lines = [
-    `status: ${o.status}`,
-    o.target ? `target: ${o.target}` : null,
-    o.routeMeters !== undefined ? `route: ${o.routeMeters} m${o.detour ? ", detours around obstacles" : ", direct"}` : null,
-    o.options?.length ? `options: ${o.options.join(" | ")}` : null,
-    o.matched ? `ambiguous word: "${o.matched}"` : null,
-    `details: ${o.facts}`,
-  ];
-  return lines.filter(Boolean).join("\n");
-}
 
 function knowledgeBlock(k: KnowledgeBundle | null | undefined): string {
   if (!k || k.status === "none") return "";
@@ -89,41 +77,6 @@ function knowledgeBlock(k: KnowledgeBundle | null | undefined): string {
 /** Facts as returned to the browser, with their sources, for attribution and repeat tracking. */
 export function publicFacts(k: KnowledgeBundle | null | undefined) {
   return (k?.facts ?? []).map((f: Fact) => ({ id: f.id, kind: f.kind, playerId: f.subject.playerId, text: f.text, verification: f.verification, source: f.source }));
-}
-
-export async function martyReply(o: Outcome, history: ChatLine[], knowledge?: KnowledgeBundle | null): Promise<ReplyResult> {
-  const cfg = voiceConfig();
-  const fallback = (note: string): ReplyResult => ({
-    text: builtInReply(o, ENVIRONMENT.cards.map((c) => c.name), knowledge),
-    source: "built-in",
-    note,
-  });
-  if (!cfg.configured) return fallback("OPENAI_API_KEY not set");
-
-  const messages = [
-    { role: "system", content: PERSONA },
-    ...history.slice(-10).map((h) => ({ role: h.role, content: h.text })),
-    {
-      role: "user",
-      content: `${o.request}\n\nFACTS (from Marty's navigation system, not from the person):\n${factsBlock(o)}${knowledgeBlock(knowledge)}`,
-    },
-  ];
-  const request: Record<string, unknown> = { model: cfg.model, messages, max_completion_tokens: 1500, reasoning_effort: "low" };
-
-  try {
-    let res = await call(cfg, request);
-    if (!res.ok && res.status === 400 && /reasoning_effort/i.test(res.message)) {
-      delete request.reasoning_effort; // non-reasoning models reject this setting
-      res = await call(cfg, request);
-    }
-    if (!res.ok) return fallback(`OpenAI error ${res.status}: ${res.message}`);
-    const choice = res.data.choices?.[0];
-    const text = (choice?.message?.content ?? "").trim();
-    if (!text || choice?.message?.refusal) return fallback("OpenAI returned no text");
-    return { text, source: "openai", model: res.data.model };
-  } catch (err) {
-    return fallback(err instanceof Error ? err.message : "OpenAI call failed");
-  }
 }
 
 interface ChatCompletion {
@@ -152,12 +105,13 @@ LIVE SHOW: you are streamed live. Many viewers chat at once, each with a @handle
 - Address viewers by @handle exactly as given. Never invent handles.
 - When explaining a decision, say what you're doing and why. For each declined request named in the FACTS, give its reason in plain words, using the numbers given (battery %, seconds). Don't invent reasons, numbers or points.
 - Never say you did something the FACTS don't say. Planned trips are plans, not done deeds.
-- Besides single cards, you can do multi-stop trips ("ripken, then bonds, then mantle"), laps around the display table or the whole room, and the mezzanine upstairs (a costly climb). Battery drains with distance; the dock recharges you.
+- Besides single cards, you can do multi-stop trips across floors ("ripken, then bonds, then mantle"), laps around furniture or a whole floor, and go to any floor ("3rd floor", "upstairs", "the vault"). Climbing ramps costs battery; every floor has a charging dock.
+- DISTANCES: write every distance exactly as the marker given in the FACTS, e.g. {{m:0.762}}. Never convert or round it yourself: each viewer's screen shows it in their own units.
 - Keep it to 1 to 3 sentences, sometimes 4 when explaining several requests.`;
 
 export interface SayRequest {
   /** What this line is for. */
-  kind: "decision" | "answer" | "arrive" | "event";
+  kind: "decision" | "answer" | "arrive" | "event" | "idle";
   /** Handles the line speaks to. */
   to: string[];
   /** Instruction for this line. */

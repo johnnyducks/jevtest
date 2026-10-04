@@ -63,6 +63,7 @@ function Meta({ card, art }: { card: Card; art?: CardArt }) {
             {card.meta.set ?? card.year} · {card.team}
           </>
         )}
+        {` · floor ${card.floor}`}
       </div>
       {cs?.description && <p className="card-meta-desc">{cs.description}</p>}
       <div className="card-meta-src mono">

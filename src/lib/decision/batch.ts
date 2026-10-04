@@ -29,7 +29,7 @@ export interface Proposal {
 }
 
 export interface BatchContext {
-  pose: { x: number; y: number; headingDeg: number };
+  pose: { x: number; y: number; headingDeg: number; floor: number; floorName: string };
   moving: boolean;
   battery: { level: number; range: number; reserve: number; dead: boolean; docked: boolean };
   current: { summary: string; handle: string; remainingMeters: number } | null;
@@ -89,7 +89,8 @@ export function buildBatchRequest(proposals: Proposal[], ctx: BatchContext, mode
   proposals.forEach((p, i) => {
     if (!executable(p)) return;
     const e = p.plan!;
-    options[`p_${i + 1}`] = `Do @${p.handle}'s request: ${e.summary} (~${e.meters} m, ~${e.seconds} s, ~${r1(e.battery)}% battery, ${p.points} points available).`;
+    const floors = e.endFloor !== ctx.pose.floor ? `, ends on floor ${e.endFloor}` : "";
+    options[`p_${i + 1}`] = `Do @${p.handle}'s request: ${e.summary} (~${e.meters} m, ~${e.seconds} s, ~${r1(e.battery)}% battery${floors}, ${p.points} points available).`;
     questions[`taxing_${i + 1}`] = {
       type: "noul",
       instructions: `Carrying out @${p.handle}'s request now would be too taxing or take too long to be worth it, given Marty's battery, the time it takes and what it earns.`,
@@ -109,7 +110,8 @@ export function buildBatchRequest(proposals: Proposal[], ctx: BatchContext, mode
     criteria: options,
   };
   const state = {
-    robot: "Marty, a small Moorebot Scout robot in a card room, streamed live; viewers chat requests and earn points when Marty visits cards for them",
+    robot: "Marty, a 4-inch Moorebot Scout robot in a six-floor card house (each floor 4 ft × 8 ft, joined by long ramps; climbing a floor costs about 7% battery), streamed live; viewers chat requests and earn points when Marty visits cards for them",
+    floor: `${ctx.pose.floor} (${ctx.pose.floorName})`,
     battery_percent: Math.round(ctx.battery.level),
     battery_range_m: r1(ctx.battery.range),
     battery_reserve_percent: ctx.battery.reserve,
@@ -123,7 +125,7 @@ export function buildBatchRequest(proposals: Proposal[], ctx: BatchContext, mode
       handle: `@${p.handle}`,
       text: p.text,
       route_estimate: executable(p)
-        ? { stops: p.plan!.summary, meters: p.plan!.meters, seconds: p.plan!.seconds, battery_percent: r1(p.plan!.battery), battery_home_after_percent: r1(p.plan!.homeBattery), points: p.points }
+        ? { stops: p.plan!.summary, meters: p.plan!.meters, seconds: p.plan!.seconds, battery_percent: r1(p.plan!.battery), battery_home_after_percent: r1(p.plan!.homeBattery), ends_on_floor: p.plan!.endFloor, points: p.plan!.stops.length ? p.points : 0 }
         : null,
       parse_issue: p.parsed.issues.length ? p.parsed.issues.map((x) => `${x.reason}: "${x.segment}"`).join("; ") : p.plan && !p.plan.ok ? p.plan.issue : null,
     })),

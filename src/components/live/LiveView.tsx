@@ -4,9 +4,10 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import type { LiveSnapshot } from "@/lib/live/types";
 import { HANDLE } from "@/lib/live/types";
-import { type Card, ENVIRONMENT } from "@/lib/twin/environment";
+import { BUILDING, type Card, floorEnv, floorName } from "@/lib/twin/environment";
 import { makeTransform } from "@/lib/twin/geometry";
 import { buildGrid } from "@/lib/twin/grid";
+import { formatLength, formatShort, type Units } from "@/lib/units";
 import { Gear, Help, Send } from "../icons";
 import { CardHover, CardModal, useCardArt } from "../cards/CardArt";
 import CardCheck from "../cards/CardCheck";
@@ -28,8 +29,9 @@ const VIEWS: { id: ViewMode; label: string; title: string }[] = [
   { id: "fpv", label: "FPV", title: "First-person: Marty's camera" },
 ];
 
-const GRID = buildGrid(ENVIRONMENT);
-const VIEW = makeTransform(ENVIRONMENT.width, ENVIRONMENT.height);
+const GRIDS = new Map(BUILDING.floors.map((f) => [f.level, buildGrid(floorEnv(BUILDING, f.level))]));
+// 300 px per meter: an 8 ft floor fills the map at a comfortable size.
+const VIEW = makeTransform(BUILDING.width, BUILDING.height, 300, 28);
 
 async function post(url: string, body: unknown): Promise<{ ok: boolean; message: string }> {
   try {
@@ -44,14 +46,18 @@ async function post(url: string, body: unknown): Promise<{ ok: boolean; message:
 const fmtTime = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`);
 
 /** Battery, range and trip readout over the map. */
-function Hud({ snap }: { snap: LiveSnapshot }) {
+function Hud({ snap, units }: { snap: LiveSnapshot; units: Units }) {
   const t = snap.telemetry;
   const b = t.battery;
   const tone = b.dead ? "bad" : b.level < 20 ? "bad" : b.level < 40 ? "warn" : "ok";
   return (
     <div className="map-hud live-hud mono" aria-label="Marty's status">
       <span className={`m-chip ${t.status === "moving" ? "live" : t.status === "stopped" ? "warn" : "muted"}`}>{t.status}</span>
-      <span className={`battery ${tone}`} title={`Battery ${b.level}%. Drains about 0.6% per meter driven; recharges at the dock.`}>
+      <span className="floor-chip" title={floorName(BUILDING, t.floor)}>
+        FLOOR <b>{t.floor}</b>
+        <span className="floor-chip-name">{floorName(BUILDING, t.floor)}</span>
+      </span>
+      <span className={`battery ${tone}`} title={`Battery ${b.level}%. Drains with every inch driven (more on ramps up); recharges at any floor's dock.`}>
         <span className="battery-shell">
           <span className="battery-fill" style={{ width: `${Math.max(0, Math.min(100, b.level))}%` }} />
         </span>
@@ -59,11 +65,11 @@ function Hud({ snap }: { snap: LiveSnapshot }) {
         {b.charging && <span className="charging">⚡</span>}
       </span>
       <span title={`Driving range above the ${b.reserve}% reserve`}>
-        <b>{Math.round(b.range)}</b> m range
+        <b>{formatLength(b.range, units)}</b> range
       </span>
       {t.trip && (
         <span>
-          <b>{t.trip.remainingMeters.toFixed(1)}</b> m left · ETA <b>{fmtTime(t.trip.etaSeconds)}</b>
+          <b>{formatLength(t.trip.remainingMeters, units)}</b> left · ETA <b>{fmtTime(t.trip.etaSeconds)}</b>
         </span>
       )}
     </div>
@@ -126,6 +132,10 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   const [opKey, setOpKey] = useStored("marty.operatorKey");
   const [storedView, setView] = useStored("marty.view");
   const view: ViewMode = storedView === "orbit" || storedView === "fpv" ? storedView : "2d";
+  const [storedUnits, setUnits] = useStored("marty.units");
+  const units: Units = storedUnits === "metric" ? "metric" : "imperial";
+  /** Floor picked in the floor list; null = follow Marty. */
+  const [pickedFloor, setPickedFloor] = useState<number | null>(null);
   const [handleDraft, setHandleDraft] = useState("");
   const [editingHandle, setEditingHandle] = useState(false);
   const [draft, setDraft] = useState("");
@@ -186,6 +196,8 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
 
   const tel = snap.telemetry;
   const moving = tel.status === "moving";
+  const viewFloor = view === "fpv" ? tel.floor : (pickedFloor ?? tel.floor);
+  const following = pickedFloor === null || pickedFloor === tel.floor;
 
   return (
     <div className="twin">
@@ -193,8 +205,12 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
         <div className={`map-frame${view === "2d" ? "" : " is-3d"}`}>
           {view === "2d" ? (
           <TwinMap
-            env={ENVIRONMENT}
-            grid={GRID}
+            env={floorEnv(BUILDING, viewFloor)}
+            grid={GRIDS.get(viewFloor)!}
+            ramps={BUILDING.ramps}
+            martyFloor={tel.floor}
+            martyLevel={tel.level}
+            units={units}
             view={VIEW}
             pose={pose}
             status={tel.status}
@@ -202,14 +218,18 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
             bonuses={snap.game.bonuses}
             cardPoints={snap.game.cardPoints}
             showClearance={showClearance}
-            onPlace={canOperate ? (p) => void op({ action: "place", x: p.x, y: p.y }) : undefined}
+            onPlace={canOperate ? (p) => void op({ action: "place", x: p.x, y: p.y, floor: viewFloor }) : undefined}
             onCardGo={(c) => (handle ? void send(`Go to ${c.name}`) : setDraft(`Go to ${c.name}`))}
             onCardHover={(c, at) => setHoverCard(c ? { card: c, at } : null)}
             onCardInspect={(c) => setOpenCard(c)}
           />
           ) : (
             <Room3D
-              env={ENVIRONMENT}
+              building={BUILDING}
+              floor={tel.floor}
+              level={tel.level}
+              viewFloor={viewFloor}
+              units={units}
               pose={pose}
               status={tel.status}
               trip={snap.trip}
@@ -227,7 +247,39 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
                 {v.label}
               </button>
             ))}
+            <span className="vs-sep" aria-hidden />
+            {(["imperial", "metric"] as const).map((u) => (
+              <button key={u} aria-pressed={units === u} className={units === u ? "on" : ""} title={u === "imperial" ? "Inches and feet" : "Centimeters and meters"} onClick={() => setUnits(u)}>
+                {u === "imperial" ? "in" : "cm"}
+              </button>
+            ))}
           </div>
+
+          {view !== "fpv" && (
+            <div className="floor-picker mono" role="group" aria-label="Floor to view">
+              {[...BUILDING.floors].reverse().map((f) => (
+                <button
+                  key={f.level}
+                  className={`${viewFloor === f.level ? "on" : ""}${tel.floor === f.level ? " marty" : ""}`}
+                  title={`Floor ${f.level}: ${f.name}${tel.floor === f.level ? " (Marty is here)" : ""}`}
+                  aria-pressed={viewFloor === f.level}
+                  onClick={() => setPickedFloor(f.level === tel.floor ? null : f.level)}
+                >
+                  {f.level}
+                </button>
+              ))}
+              {!following && (
+                <button className="follow" title="Follow Marty from floor to floor" onClick={() => setPickedFloor(null)}>
+                  ⌖
+                </button>
+              )}
+            </div>
+          )}
+          {view !== "fpv" && viewFloor !== tel.floor && (
+            <div className="floor-note mono">
+              Viewing floor {viewFloor} · {floorName(BUILDING, viewFloor)}. Marty is on floor {tel.floor}.
+            </div>
+          )}
 
           <div className="map-corner">
             <span className="viewers mono" title="People watching right now">
@@ -238,8 +290,10 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
               <ul className="pop-list">
                 <li>Pick a handle, then ask Marty to go somewhere.</li>
                 <li>Chain stops: “Ripken, then Bonds, then Mantle”.</li>
-                <li>Laps: “go around the display table”, “lap the room”.</li>
-                <li>“Go upstairs” climbs the ramp. Costs a lot of battery.</li>
+                <li>Six floors, 4 ft × 8 ft each, joined by long ramps. Try “3rd floor”, “upstairs”, “the vault”, or any card: Marty takes the ramps himself.</li>
+                <li>Laps: “go around the display table”, “lap the floor”.</li>
+                <li>The numbers on the left pick which floor you&apos;re looking at; Marty&apos;s floor is marked.</li>
+                <li>“in / cm” switches between inches and centimeters.</li>
                 <li>Jev reads everyone&apos;s messages and picks what to do. Safety rules can veto it.</li>
                 <li>You score a card&apos;s points when Marty visits it for you. Bonuses pop up now and then.</li>
                 <li>Battery drains with distance. Marty recharges at the dock.</li>
@@ -279,15 +333,15 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
                 <span className="tm-label">Speed</span>
                 <input
                   type="range"
-                  min={0.2}
-                  max={1.5}
-                  step={0.1}
+                  min={0.05}
+                  max={0.4}
+                  step={0.01}
                   value={tel.speed}
                   disabled={!canOperate}
                   onChange={(e) => void op({ action: "speed", mps: Number(e.target.value) })}
                   aria-label="Speed, meters per second"
                 />
-                <span className="mono">{tel.speed.toFixed(1)} m/s</span>
+                <span className="mono">{formatShort(tel.speed, units, 1)}/s</span>
               </label>
               <label className="pop-ctl">
                 <span className="tm-label">Battery</span>
@@ -329,7 +383,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
             </Popover>
           </div>
 
-          <Hud snap={snap} />
+          <Hud snap={snap} units={units} />
           {snap.trip?.status === "running" && (
             <div className="trip-banner mono">
               <b>@{snap.trip.handle}</b> · {snap.trip.doing}
@@ -341,7 +395,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
       </section>
 
       <aside className="twin-chat" aria-label="Live chat">
-        <LiveChat chat={snap.chat} me={handle} />
+        <LiveChat chat={snap.chat} me={handle} units={units} />
         {(snap.deciding || snap.queue.length > 0) && (
           <div className="live-status mono">
             {snap.deciding && (

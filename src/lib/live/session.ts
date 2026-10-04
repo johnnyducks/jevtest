@@ -18,13 +18,14 @@ import type { KnowledgeBundle, KnowledgeRequest } from "../baseball/service.ts";
 import { type BatchContext, type BatchDecision, decideBatch, type Evaluate, executable, type Proposal } from "../decision/batch.ts";
 import { Game, type GameConfig, type GameSnapshot } from "../game/game.ts";
 import { Battery, BATTERY } from "../twin/battery.ts";
-import type { Environment, Pose, Vec } from "../twin/environment.ts";
+import { type Building, floorEnv, floorName, type Vec } from "../twin/environment.ts";
 import { toDegrees } from "../twin/geometry.ts";
-import { blockReason, type Grid } from "../twin/grid.ts";
+import { blockReason, buildGrid, type Grid, isFreePoint } from "../twin/grid.ts";
 import { DEFAULT_PARAMS, type Scheduler, SimulatedMotion } from "../twin/motion.ts";
-import { type ParsedRequest, parseRequest, planRoute, type RoutePlan, type StopRef } from "../twin/routes.ts";
+import { type FloorPose, type ParsedRequest, parseRequest, planRoute, type RoutePlan, type StopRef } from "../twin/routes.ts";
+import { dist } from "../units.ts";
 import type { ChatLine, ReplyResult, SayRequest } from "../voice/openai.ts";
-import { answerLine, arrivalQuip, decisionFacts, decisionLine, jevDownLine } from "./lines.ts";
+import { answerLine, arrivalQuip, decisionFacts, decisionLine, IDLE_TOPICS, idleLine, jevDownLine } from "./lines.ts";
 import { type ChatItem, type DecisionTrace, HANDLE, type LiveEvent, type LiveSnapshot, MAX_CHAT_CHARS, type PublicTrip, type Telemetry } from "./types.ts";
 
 export interface LiveConfig {
@@ -50,6 +51,9 @@ export interface LiveConfig {
   maxAnswers: number;
   /** After a trip, below this battery % Marty heads home (rule B3). */
   autoDockBelow: number;
+  /** Quiet this long (ms) and Marty thinks out loud; each further musing waits twice as long, up to idleMaxMs. */
+  idleAfterMs: number;
+  idleMaxMs: number;
   game?: Partial<GameConfig>;
 }
 
@@ -61,18 +65,19 @@ export const LIVE: LiveConfig = {
   clientWindowMs: 10_000,
   maxPending: 30,
   chatLimit: 150,
-  maxTripSeconds: 150,
+  maxTripSeconds: 240,
   taxingThreshold: 0.6,
   queueAttempts: 3,
   maxAnswers: 2,
   autoDockBelow: 20,
+  idleAfterMs: 75_000,
+  idleMaxMs: 15 * 60_000,
 };
 
 const RESERVED = new Set(["marty", "jev", "system", "operator", "admin", "mod", "moderator"]);
 
 export interface LiveDeps {
-  env: Environment;
-  grid: Grid;
+  building: Building;
   /** Jev System One; null when not configured (Marty then never moves on viewer requests). */
   evaluate: Evaluate | null;
   jevModel: string;
@@ -97,6 +102,10 @@ interface Trip {
   handle: string;
   /** Viewer requests earn points; Marty's own trips (dock) don't. */
   viewer: boolean;
+  /** Distance travelled on the current ramp leg already charged for climbing, meters. */
+  climbed: number;
+  /** Distance covered on the current ramp leg before a stop/resume (motion restarts its own count). */
+  rampOffset: number;
   refs: StopRef[];
   plan: RoutePlan;
   leg: number;
@@ -112,7 +121,7 @@ export type OperatorCommand =
   | { action: "resume" }
   | { action: "reset" }
   | { action: "dock" }
-  | { action: "place"; x: number; y: number }
+  | { action: "place"; x: number; y: number; floor?: number }
   | { action: "rotate"; deg: number }
   | { action: "speed"; mps: number }
   | { action: "battery"; level: number };
@@ -122,13 +131,16 @@ export type PostResult = { ok: true; id: string } | { ok: false; code: "bad_hand
 /** Scheduler that never fires: motion is advanced from tick(). */
 const MANUAL: Scheduler = { request: () => 1, cancel: () => {}, now: () => 0 };
 
-const r1 = (n: number) => Math.round(n * 10) / 10;
 
 export class LiveSession {
   readonly config: LiveConfig;
   private deps: LiveDeps;
-  private env: Environment;
-  private grid: Grid;
+  private b: Building;
+  private grids = new Map<number, Grid>();
+  /** Floor Marty is on (the floor he's heading to, once on a ramp leg's upper half). */
+  private floor: number;
+  /** Continuous height in floors (e.g. 2.4 while climbing from 2 to 3), for the 3D view. */
+  private level: number;
   readonly motion: SimulatedMotion;
   readonly battery: Battery;
   readonly game: Game;
@@ -151,20 +163,42 @@ export class LiveSession {
   private lastJevDown = -Infinity;
   private charging = false;
   private work = new Set<Promise<unknown>>();
+  /** Last time anyone (viewer or Marty's own trip) did something; drives idle musings. */
+  private lastActivity: number;
+  private idleCount = 0;
+  private idleTopics: string[] = [];
 
   constructor(deps: LiveDeps) {
     this.deps = deps;
-    this.env = deps.env;
-    this.grid = deps.grid;
+    this.b = deps.building;
+    for (const f of this.b.floors) this.grids.set(f.level, buildGrid(floorEnv(this.b, f.level)));
+    this.floor = this.b.defaultFloor;
+    this.level = this.floor;
     this.config = { ...LIVE, ...deps.config };
     const now = deps.now();
     this.lastTick = now;
-    this.motion = new SimulatedMotion(this.env.defaultPose, MANUAL, DEFAULT_PARAMS);
+    this.lastActivity = now;
+    this.motion = new SimulatedMotion(this.b.defaultPose, MANUAL, DEFAULT_PARAMS);
     this.battery = new Battery(100, BATTERY);
-    this.battery.resync(this.env.defaultPose);
+    this.battery.resync(this.b.defaultPose);
     // Battery drains by measured motion only; teleports (placement, reset) re-sync instead.
     this.motion.subscribe((s) => (s.status === "moving" || s.status === "arrived" ? this.battery.observe(s.pose) : this.battery.resync(s.pose)));
-    this.game = new Game(this.env, this.grid, { seed: deps.seed, now, config: this.config.game });
+    this.game = new Game(this.b.cards, (c) => this.reachable(c), { seed: deps.seed, now, config: this.config.game });
+  }
+
+  private grid(floor: number): Grid {
+    return this.grids.get(floor)!;
+  }
+
+  /** A card Marty can get to at all: its viewing spot is free and connected to its floor's dock. */
+  private reachable(c: { floor: number; approach: Vec }): boolean {
+    const g = this.grid(c.floor);
+    if (!isFreePoint(g, c.approach)) return false;
+    return connected(g, floorEnv(this.b, c.floor).dock, c.approach);
+  }
+
+  private where(): FloorPose {
+    return { ...this.motion.getState().pose, floor: this.floor };
   }
 
   // ── Subscriptions ─────────────────────────────────────────────────────
@@ -259,7 +293,7 @@ export class LiveSession {
   }
 
   /** Marty says something. Shows a typing indicator, then the line (model or built-in). */
-  private speak(req: Omit<SayRequest, "history">, extra: { decision?: DecisionTrace } = {}) {
+  private speak(req: Omit<SayRequest, "history">, extra: { decision?: DecisionTrace; idle?: boolean } = {}) {
     const id = this.id("m");
     const base = { id, kind: "marty" as const, at: this.deps.now(), to: req.to, ...extra };
     this.upsert({ ...base, state: "pending" });
@@ -302,6 +336,8 @@ export class LiveSession {
     if (this.lastPost.size > 5000) for (const [k, t] of this.lastPost) if (now - (t.at(-1) ?? 0) > 60_000) this.lastPost.delete(k);
 
     const id = this.id("v");
+    this.lastActivity = now;
+    this.idleCount = 0;
     this.upsert({ id, kind: "viewer", at: now, handle, text, state: "waiting" });
     this.pending.push({ id, handle, text, at: now, attempts: 0 });
     const first = this.pending[0].at;
@@ -311,11 +347,13 @@ export class LiveSession {
 
   // ── Decisions ─────────────────────────────────────────────────────────
 
-  private proposal(w: Waiting, from: Pose): Proposal {
-    const parsed: ParsedRequest = parseRequest(this.env, w.text);
-    const plan = parsed.stops.length
-      ? planRoute(this.env, this.grid, from, parsed.stops, { speed: this.motion.getSpeed(), turnRate: DEFAULT_PARAMS.turnRate })
-      : null;
+  private plan(from: FloorPose, stops: StopRef[]) {
+    return planRoute(this.b, (f) => this.grid(f), from, stops, { speed: this.motion.getSpeed(), turnRate: DEFAULT_PARAMS.turnRate });
+  }
+
+  private proposal(w: Waiting, from: FloorPose): Proposal {
+    const parsed: ParsedRequest = parseRequest(this.b, w.text);
+    const plan = parsed.stops.length ? this.plan(from, parsed.stops) : null;
     const now = this.deps.now();
     const points = (plan?.stops ?? []).reduce((a, s) => {
       if (!s.cardId) return a;
@@ -325,16 +363,21 @@ export class LiveSession {
     return { id: w.id, handle: w.handle, text: w.text, parsed, plan, points };
   }
 
+  private dock() {
+    return floorEnv(this.b, this.floor).dock;
+  }
+
   private docked() {
     const p = this.motion.getState().pose;
-    return Math.hypot(p.x - this.env.dock.x, p.y - this.env.dock.y) <= this.battery.config.dockRadius;
+    const d = this.dock();
+    return Math.hypot(p.x - d.x, p.y - d.y) <= this.battery.config.dockRadius;
   }
 
   private context(): BatchContext {
     const s = this.motion.getState();
     const t = this.running();
     return {
-      pose: { x: r1(s.pose.x), y: r1(s.pose.y), headingDeg: Math.round(toDegrees(s.pose.heading)) },
+      pose: { x: Math.round(s.pose.x * 100) / 100, y: Math.round(s.pose.y * 100) / 100, headingDeg: Math.round(toDegrees(s.pose.heading)), floor: this.floor, floorName: floorName(this.b, this.floor) },
       moving: s.status === "moving" || !!t,
       battery: { level: this.battery.level, range: this.battery.range, reserve: this.battery.config.reserve, dead: this.battery.dead, docked: this.docked() },
       current: t ? { summary: t.plan.summary, handle: t.handle, remainingMeters: this.remaining().meters } : null,
@@ -355,7 +398,7 @@ export class LiveSession {
 
     const epoch = this.epoch;
     const token = this.stopToken;
-    const from = { ...this.motion.getState().pose };
+    const from = this.where();
     const proposals = batch.map((w) => this.proposal(w, from));
     for (const p of proposals) if (p.parsed.corrections.length) this.markViewer(p.id, { corrections: p.parsed.corrections });
     const ctx = this.context();
@@ -441,7 +484,7 @@ export class LiveSession {
       if (d.intents[p.id]?.intent !== "move" || executable(p) || replayIds.has(p.id)) continue;
       const issue = p.parsed.issues[0];
       if (issue?.reason === "ambiguous") issues.push({ handle: p.handle, text: `"${issue.matched ?? issue.segment}" could be ${issue.options!.map((o) => o.name).join(" or ")}. Which one?` });
-      else if (issue) issues.push({ handle: p.handle, text: `I couldn't find "${issue.segment}" in this room.` });
+      else if (issue) issues.push({ handle: p.handle, text: `I couldn't find "${issue.segment}" anywhere in the building.` });
       else if (p.plan?.issue) issues.push({ handle: p.handle, text: p.plan.issue });
       else issues.push({ handle: p.handle, text: "I couldn't tell where you want me to go. Name a card, or chain a few with \"then\"." });
     }
@@ -488,8 +531,8 @@ export class LiveSession {
         kind: "answer",
         to: [p.handle],
         instruction: `Answer @${p.handle}'s question: "${p.text}"`,
-        facts: `battery: ${Math.round(bat.level)}% (about ${Math.round(bat.range)} m of driving left)\nright now: ${doing}\npoints leader: ${this.game.snapshot(this.deps.now()).scores[0]?.handle ?? "nobody yet"}`,
-        fallback: answerLine(p.handle, k, bat, doing),
+        facts: `battery: ${Math.round(bat.level)}% (about ${dist(bat.range)} of driving left)\nfloor: ${this.floor} of ${this.b.floors.length} (${floorName(this.b, this.floor)})\nright now: ${doing}\npoints leader: ${this.game.snapshot(this.deps.now()).scores[0]?.handle ?? "nobody yet"}`,
+        fallback: answerLine(p.handle, k, bat, `${doing} on floor ${this.floor}`),
         knowledge: k,
       },
       trace ? { decision: trace } : {},
@@ -515,8 +558,8 @@ export class LiveSession {
   private doing(): string {
     const t = this.running();
     if (t) return `${t.doing} (trip for @${t.handle}: ${t.plan.summary})`;
-    if (this.charging) return "charging at the dock";
-    return "parked, waiting for requests";
+    if (this.charging) return `charging at the dock on floor ${this.floor}`;
+    return `parked on floor ${this.floor}, waiting for requests`;
   }
 
   private startTrip(handle: string, viewer: boolean, refs: StopRef[], plan: RoutePlan) {
@@ -526,13 +569,14 @@ export class LiveSession {
       prev.status = "stopped";
       this.system(`Trip for @${prev.handle} (${prev.plan.summary}) was replaced.`, "info");
     }
-    this.trip = { id: this.id("t"), handle, viewer, refs, plan, leg: -1, dwellLeft: 0, stopsDone: 0, status: "running", startedAt: this.deps.now(), doing: "" };
+    this.trip = { id: this.id("t"), handle, viewer, refs, plan, leg: -1, dwellLeft: 0, stopsDone: 0, status: "running", startedAt: this.deps.now(), doing: "", climbed: 0, rampOffset: 0 };
+    this.lastActivity = this.deps.now();
     this.nextLeg();
   }
 
   private startDock(why: string) {
     const refs: StopRef[] = [{ kind: "area", text: "dock" }];
-    const plan = planRoute(this.env, this.grid, this.motion.getState().pose, refs, { speed: this.motion.getSpeed(), turnRate: DEFAULT_PARAMS.turnRate });
+    const plan = this.plan(this.where(), refs);
     if (!plan.ok) {
       this.system(`Can't get back to the dock: ${plan.issue ?? "no route"}.`, "warn");
       return false;
@@ -547,15 +591,24 @@ export class LiveSession {
     const prevLeg = t.plan.legs[t.leg];
     t.leg++;
     const leg = t.plan.legs[t.leg];
-    // A stop is done once its last leg is (a card's drive + look, the ramp's drive + climb, a full lap).
-    if (prevLeg?.stop && leg?.stop?.name !== prevLeg.stop.name) t.stopsDone++;
+    // A stop is done once its last leg is (a card's drive + look, a full lap, arriving on a floor).
+    const stopOf = (l: typeof leg) => (l && l.kind !== "ramp" ? l.stop?.name : undefined);
+    if (stopOf(prevLeg) && stopOf(leg) !== stopOf(prevLeg)) t.stopsDone++;
+    if (prevLeg?.kind === "ramp") {
+      this.floor = prevLeg.to;
+      this.level = prevLeg.to;
+    }
     if (!leg) {
       this.finishTrip("done");
       return;
     }
     t.doing = leg.label;
     if (leg.kind === "drive") this.motion.follow(leg.path, `${t.id}:${t.leg}`, leg.face ?? null);
-    else t.dwellLeft = leg.seconds;
+    else if (leg.kind === "ramp") {
+      t.climbed = 0;
+      t.rampOffset = 0;
+      this.motion.follow(leg.path, `${t.id}:${t.leg}`);
+    } else t.dwellLeft = leg.seconds;
     this.emit({ type: "trip", trip: this.publicTrip() });
   }
 
@@ -581,7 +634,7 @@ export class LiveSession {
       if (last) this.upsert({ id: this.id("m"), kind: "marty", at: now, state: "done", text: arrivalQuip(name, this.seq), source: "built-in", to: [t.handle] });
       return;
     }
-    const card = this.env.cards.find((c) => c.id === cardId);
+    const card = this.b.cards.find((c) => c.id === cardId);
     void this.track(
       this.lookup({ trigger: d.trigger, cardId, exclude: this.policy.said(), recentKinds: this.policy.recentKinds(card?.player.lahmanId) }).then((k) => {
         const fact = k?.facts[0]?.text;
@@ -608,8 +661,9 @@ export class LiveSession {
     t.status = status;
     t.doing = status === "done" ? "finished" : (note ?? status);
     this.emit({ type: "trip", trip: this.publicTrip() });
+    this.lastActivity = this.deps.now();
     if (status === "done") {
-      if (t.viewer) this.system(`Trip complete for @${t.handle}: ${t.plan.summary}.`, "info");
+      if (t.viewer) this.system(`Trip complete for @${t.handle}: ${t.plan.summary}. Now on floor ${this.floor}.`, "info");
       if (t.viewer && this.battery.level < this.config.autoDockBelow && !this.docked()) {
         this.system(`Rule B3: battery at ${Math.round(this.battery.level)}%, below ${this.config.autoDockBelow}%.`, "warn");
         this.startDock("low battery");
@@ -637,7 +691,7 @@ export class LiveSession {
     const leg = t.plan.legs[t.leg];
     let meters = 0;
     let dwell = t.dwellLeft;
-    if (leg?.kind === "drive" && s.status === "moving") {
+    if ((leg?.kind === "drive" || leg?.kind === "ramp") && s.status === "moving") {
       let prev: Vec = s.pose;
       for (const p of s.path.slice(s.waypoint)) {
         meters += Math.hypot(p.x - prev.x, p.y - prev.y);
@@ -645,8 +699,8 @@ export class LiveSession {
       }
     }
     for (const l of t.plan.legs.slice(t.leg + 1)) {
-      if (l.kind === "drive") meters += l.meters;
-      else dwell += l.seconds;
+      if (l.kind === "dwell") dwell += l.seconds;
+      else meters += l.meters;
     }
     return { meters, seconds: meters / this.motion.getSpeed() + dwell };
   }
@@ -659,8 +713,13 @@ export class LiveSession {
       handle: t.handle,
       summary: t.plan.summary,
       status: t.status,
-      stops: t.plan.stops.map((s, i) => ({ name: s.name, ...(s.cardId ? { cardId: s.cardId } : {}), point: s.point, done: i < t.stopsDone })),
-      legs: t.plan.legs.flatMap((l, i) => (l.kind === "drive" ? [{ path: l.path, done: i < t.leg || t.status === "done" }] : [])),
+      stops: t.plan.stops.map((s, i) => ({ name: s.name, ...(s.cardId ? { cardId: s.cardId } : {}), point: s.point, floor: s.floor, done: i < t.stopsDone })),
+      legs: t.plan.legs.flatMap((l, i) => {
+        const done = i < t.leg || t.status === "done";
+        if (l.kind === "drive") return [{ path: l.path, done, floor: l.floor }];
+        if (l.kind === "ramp") return [{ path: l.path, done, floor: l.from, ramp: { from: l.from, to: l.to, incline: l.incline } }];
+        return [];
+      }),
       estimate: { meters: t.plan.meters, seconds: t.plan.seconds, battery: t.plan.battery },
       startedAt: t.startedAt,
       doing: t.doing,
@@ -682,7 +741,18 @@ export class LiveSession {
         const t = this.trip;
         if (!t || t.status !== "stopped" || moving) return { ok: false, message: "Nothing to resume." };
         const refs = t.refs.slice(t.stopsDone);
-        const plan = planRoute(this.env, this.grid, s.pose, refs, { speed: this.motion.getSpeed(), turnRate: DEFAULT_PARAMS.turnRate });
+        if (t.plan.legs[t.leg]?.kind === "ramp") {
+          // Stopped part-way up (or down) a ramp: finish it, then carry on with the rest of the trip.
+          const st = this.motion.getState();
+          t.rampOffset += st.travelled;
+          t.status = "running";
+          t.doing = t.plan.legs[t.leg].label;
+          this.motion.follow([{ x: st.pose.x, y: st.pose.y }, ...st.path.slice(st.waypoint)], `${t.id}:${t.leg}`);
+          this.system(`Resuming @${t.handle}'s trip from the ramp.`, "info");
+          this.emit({ type: "trip", trip: this.publicTrip() });
+          return { ok: true, message: "Resumed." };
+        }
+        const plan = this.plan(this.where(), refs);
         if (!plan.ok) return { ok: false, message: plan.issue ?? "No route from here." };
         this.system(`Resuming @${t.handle}'s trip: ${plan.summary}.`, "info");
         this.startTrip(t.handle, t.viewer, refs, plan);
@@ -696,12 +766,16 @@ export class LiveSession {
         return { ok: true, message: "Reset." };
       case "place": {
         if (moving) return { ok: false, message: "Stop Marty before repositioning him." };
-        const pose = { x: Math.round(cmd.x * 100) / 100, y: Math.round(cmd.y * 100) / 100, heading: s.pose.heading };
-        const why = blockReason(this.env, this.grid, pose);
+        const floor = cmd.floor ?? this.floor;
+        if (!this.b.floors.some((f) => f.level === floor)) return { ok: false, message: `There's no floor ${floor}.` };
+        const pose = { x: Math.round(cmd.x * 1000) / 1000, y: Math.round(cmd.y * 1000) / 1000, heading: s.pose.heading };
+        const why = blockReason(floorEnv(this.b, floor), this.grid(floor), pose);
         if (why) return { ok: false, message: `Can't place Marty there: ${why}.` };
+        this.floor = floor;
+        this.level = floor;
         this.motion.setPose(pose);
         this.emitTelemetry(true);
-        return { ok: true, message: `Placed at (${pose.x.toFixed(2)}, ${pose.y.toFixed(2)}).` };
+        return { ok: true, message: `Placed on floor ${floor}.` };
       }
       case "rotate":
         if (moving) return { ok: false, message: "Stop Marty before turning him." };
@@ -711,7 +785,7 @@ export class LiveSession {
       case "speed":
         this.motion.setSpeed(cmd.mps);
         this.emitTelemetry(true);
-        return { ok: true, message: `Speed ${this.motion.getSpeed().toFixed(1)} m/s.` };
+        return { ok: true, message: `Speed set.` };
       case "battery":
         this.battery.set(cmd.level);
         this.emitTelemetry(true);
@@ -723,7 +797,9 @@ export class LiveSession {
     this.epoch++;
     this.stopToken++;
     this.motion.stop();
-    this.motion.setPose(this.env.defaultPose);
+    this.motion.setPose(this.b.defaultPose);
+    this.floor = this.b.defaultFloor;
+    this.level = this.floor;
     this.battery.set(100);
     this.battery.metersDriven = 0;
     const now = this.deps.now();
@@ -736,6 +812,8 @@ export class LiveSession {
     this.deciding = false;
     this.dueAt = null;
     this.lastPost.clear();
+    this.lastActivity = now;
+    this.idleCount = 0;
     this.emit({ type: "snapshot", snapshot: this.snapshot() });
   }
 
@@ -757,6 +835,19 @@ export class LiveSession {
         this.motion.advance(dt);
         const s = this.motion.getState();
         if (s.status === "arrived" && s.missionId === `${t.id}:${t.leg}`) this.onDriveArrived();
+      } else if (leg?.kind === "ramp") {
+        this.motion.advance(dt);
+        const s = this.motion.getState();
+        // Height follows the distance actually travelled along the incline; climbing costs extra battery.
+        const [a, z] = leg.incline;
+        const along = Math.min(z, Math.max(a, s.travelled + t.rampOffset));
+        const frac = (along - a) / (z - a);
+        this.level = leg.from + (leg.to - leg.from) * frac;
+        if (leg.to > leg.from) {
+          this.battery.spend((along - a - t.climbed) * this.battery.config.climbPerMeter);
+          t.climbed = along - a;
+        }
+        if (s.status === "arrived" && s.missionId === `${t.id}:${t.leg}`) this.nextLeg();
       } else if (leg?.kind === "dwell") {
         const used = Math.min(dt, t.dwellLeft);
         if (leg.battery) this.battery.spend((leg.battery * used) / leg.seconds);
@@ -767,7 +858,7 @@ export class LiveSession {
 
     const moving = this.motion.getState().status === "moving";
     const wasCharging = this.charging;
-    this.charging = this.battery.charge(this.motion.getState().pose, this.env.dock, dt, moving || !!this.running());
+    this.charging = this.battery.charge(this.motion.getState().pose, this.dock(), dt, moving || !!this.running());
     if (wasCharging && !this.charging && this.battery.level >= 100) this.system("Fully charged.", "info");
 
     const g = this.game.tick(now);
@@ -778,7 +869,38 @@ export class LiveSession {
       if (this.pending.length || this.queued.length) void this.track(this.runBatch());
       else this.dueAt = null;
     }
+    this.maybeMuse(now);
     this.emitTelemetry(false);
+  }
+
+  // ── Idle thoughts ─────────────────────────────────────────────────────
+
+  /** How long Marty waits before his next musing: doubles each time nobody answers. */
+  private idleDelay() {
+    return Math.min(this.config.idleMaxMs, this.config.idleAfterMs * 2 ** this.idleCount);
+  }
+
+  /** When the room has been quiet for a while (and someone is watching), Marty thinks out loud. */
+  private maybeMuse(now: number) {
+    if (!this.viewers || this.running() || this.deciding || this.pending.length) return;
+    if (now - this.lastActivity < this.idleDelay()) return;
+    this.lastActivity = now;
+    this.idleCount++;
+    if (!this.idleTopics.length) this.idleTopics = shuffle(IDLE_TOPICS, this.seq + this.idleCount);
+    const topic = this.idleTopics.pop()!;
+    const env = floorEnv(this.b, this.floor);
+    const nearby = env.cards.map((c) => `${c.name} (${c.year} ${c.team})`).join(", ");
+    const quiet = Math.round((this.idleDelay() / 2 / 60_000) * 10) / 10;
+    void this.speak(
+      {
+        kind: "idle",
+        to: [],
+        instruction: `Nobody has said anything for a while. Think out loud in 1 or 2 short sentences, as if to yourself: ${topic} Be wry, a little existential, never gloomy or needy. Don't ask viewers to do anything unless it's a fun idea. Don't repeat an earlier musing.`,
+        facts: `floor: ${this.floor} of ${this.b.floors.length} (${env.name})\ncards on this floor: ${nearby || "none"}\nbattery: ${Math.round(this.battery.level)}%\nquiet for about ${quiet} minutes\nviewers watching: ${this.viewers}`,
+        fallback: idleLine(topic, { floor: this.floor, floorName: env.name, battery: this.battery.level, card: env.cards[this.idleCount % Math.max(1, env.cards.length)]?.name }),
+      },
+      { idle: true },
+    );
   }
 
   private telemetry(now: number): Telemetry {
@@ -787,12 +909,14 @@ export class LiveSession {
     const rem = this.remaining();
     return {
       at: now,
-      pose: { x: Math.round(s.pose.x * 1000) / 1000, y: Math.round(s.pose.y * 1000) / 1000, heading: Math.round(s.pose.heading * 1000) / 1000 },
+      pose: { x: Math.round(s.pose.x * 10000) / 10000, y: Math.round(s.pose.y * 10000) / 10000, heading: Math.round(s.pose.heading * 1000) / 1000 },
+      floor: this.floor,
+      level: Math.round(this.level * 1000) / 1000,
       status: t ? "moving" : s.status,
       speed: this.motion.getSpeed(),
-      battery: { level: Math.round(this.battery.level * 10) / 10, range: r1(this.battery.range), reserve: this.battery.config.reserve, charging: this.charging, dead: this.battery.dead },
-      trip: t ? { remainingMeters: r1(rem.meters), etaSeconds: Math.round(rem.seconds) } : null,
-      metersDriven: r1(this.battery.metersDriven),
+      battery: { level: Math.round(this.battery.level * 10) / 10, range: Math.round(this.battery.range * 100) / 100, reserve: this.battery.config.reserve, charging: this.charging, dead: this.battery.dead },
+      trip: t ? { remainingMeters: Math.round(rem.meters * 1000) / 1000, etaSeconds: Math.round(rem.seconds) } : null,
+      metersDriven: Math.round(this.battery.metersDriven * 1000) / 1000,
     };
   }
 
@@ -819,4 +943,43 @@ export class LiveSession {
 
 function publicFacts(k: KnowledgeBundle | null | undefined) {
   return (k?.facts ?? []).map((f) => ({ id: f.id, kind: f.kind, playerId: f.subject.playerId, text: f.text, verification: f.verification, source: f.source }));
+}
+
+/** True when `to` is in the same connected free region as `from`. */
+function connected(g: Grid, from: Vec, to: Vec): boolean {
+  const cell = (p: Vec) => ({ c: Math.floor(p.x / g.resolution), r: Math.floor(p.y / g.resolution) });
+  const a = cell(from);
+  const z = cell(to);
+  const seen = new Uint8Array(g.cols * g.rows);
+  const free = (c: number, r: number) => c >= 0 && r >= 0 && c < g.cols && r < g.rows && !g.blocked[r * g.cols + c];
+  if (!free(a.c, a.r) || !free(z.c, z.r)) return false;
+  const q = [a.r * g.cols + a.c];
+  seen[q[0]] = 1;
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h];
+    if (i === z.r * g.cols + z.c) return true;
+    const c = i % g.cols;
+    const r = (i - c) / g.cols;
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc;
+      const nr = r + dr;
+      if (free(nc, nr) && !seen[nr * g.cols + nc]) {
+        seen[nr * g.cols + nc] = 1;
+        q.push(nr * g.cols + nc);
+      }
+    }
+  }
+  return false;
+}
+
+/** Deterministic shuffle (so tests are repeatable). */
+function shuffle<T>(list: readonly T[], seed: number): T[] {
+  const out = [...list];
+  let a = (seed * 2654435761) >>> 0;
+  for (let i = out.length - 1; i > 0; i--) {
+    a = (a * 1664525 + 1013904223) >>> 0;
+    const j = a % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }

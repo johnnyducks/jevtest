@@ -157,7 +157,7 @@ export function smooth(g: Grid, pts: Vec[]): Vec[] {
 }
 
 const pathLength = (pts: Vec[]) => pts.slice(1).reduce((a, p, i) => a + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0);
-const r2 = (n: number) => Math.round(n * 100) / 100;
+const r2 = (n: number) => Math.round(n * 1000) / 1000;
 
 export function planPath(g: Grid, start: Vec, goal: Vec): PlanResult {
   const direct = Math.hypot(goal.x - start.x, goal.y - start.y);

@@ -3997,3 +3997,184 @@ pre.code {
   font-style: normal;
   color: var(--sim);
 }
+
+/* ─── Floors, units ─────────────────────────────────────────────────────── */
+
+.floor-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--muted);
+}
+
+.floor-chip b {
+  color: var(--accent);
+}
+
+.floor-chip-name {
+  color: var(--dim);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floor-picker {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: rgba(8, 11, 15, 0.88);
+}
+
+.floor-picker button {
+  position: relative;
+  width: 30px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.floor-picker button:hover {
+  color: var(--text);
+}
+
+.floor-picker button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+/* Marty's floor: a small dot beside the number. */
+.floor-picker button.marty::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 6px #4ade80;
+}
+
+.floor-picker button.follow {
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.floor-note {
+  position: absolute;
+  left: 50%;
+  top: 56px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: rgba(8, 11, 15, 0.88);
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.vs-sep {
+  width: 1px;
+  margin: 4px 3px;
+  background: var(--line-2);
+}
+
+.ramp-zone rect {
+  fill: rgba(245, 165, 36, 0.1);
+  stroke: rgba(245, 165, 36, 0.55);
+  stroke-dasharray: 4 3;
+}
+
+.ramp-zone.opening rect {
+  fill: #020304;
+  stroke: rgba(148, 178, 204, 0.3);
+}
+
+.ramp-zone text {
+  fill: var(--sim);
+  font-size: 9px;
+}
+
+.ramp-zone.opening text {
+  fill: var(--dim);
+}
+
+.card-hit {
+  fill: transparent;
+}
+
+.msg.marty.idle {
+  border-style: dashed;
+  background: transparent;
+}
+
+.msg.marty.idle .msg-text {
+  color: var(--muted);
+  font-style: italic;
+}
+
+@media (max-width: 520px) {
+  .floor-chip-name {
+    display: none;
+  }
+
+  .floor-picker {
+    left: 6px;
+    padding: 3px;
+  }
+
+  .floor-picker button {
+    width: 24px;
+    height: 22px;
+  }
+}
+
+/* Phones: a 4 × 8 ft floor is long and thin, so give the map a square frame and keep
+   the overlays above and below the floor plan instead of on top of it. */
+@media (max-width: 520px) {
+  .map-frame,
+  .map-frame.is-3d {
+    aspect-ratio: 1 / 1;
+    min-height: 0;
+    flex: none;
+  }
+
+  .floor-picker {
+    top: auto;
+    bottom: 50px;
+    left: 8px;
+    transform: none;
+    flex-direction: row-reverse;
+  }
+
+  .floor-note {
+    top: auto;
+    bottom: 88px;
+    max-width: calc(100% - 16px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .trip-banner {
+    bottom: 88px;
+  }
+}

@@ -1,12 +1,10 @@
 import type { Evaluate } from "../../decision/batch.ts";
 import type { ChoiceAnswer, NoulAnswer, SystemOneRequest, SystemOneResponse } from "../../jev/types.ts";
-import { ENVIRONMENT } from "../../twin/environment.ts";
-import { buildGrid } from "../../twin/grid.ts";
+import { BUILDING } from "../../twin/environment.ts";
 import type { SayRequest } from "../../voice/openai.ts";
 import { type LiveConfig, LiveSession } from "../session.ts";
 
-export const env = ENVIRONMENT;
-export const grid = buildGrid(env);
+export const building = BUILDING;
 
 type Msg = { n: number; handle: string; text: string };
 
@@ -54,8 +52,7 @@ export function makeSession(o: { evaluate?: Evaluate | null; config?: Partial<Li
   const clock = { t: 1_000_000 };
   const jev = fakeJev();
   const s = new LiveSession({
-    env,
-    grid,
+    building,
     evaluate: o.evaluate === undefined ? jev.evaluate : o.evaluate,
     jevModel: "jev-test",
     say: o.voice ?? builtInVoice,

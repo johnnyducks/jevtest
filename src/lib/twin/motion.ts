@@ -51,7 +51,8 @@ export interface MotionParams {
   turnInPlace: number;
 }
 
-export const DEFAULT_PARAMS: MotionParams = { speed: 0.6, turnRate: Math.PI, turnInPlace: (25 * Math.PI) / 180 };
+/** A 4 in tracked robot: about 7 in/s, a quarter turn per second. */
+export const DEFAULT_PARAMS: MotionParams = { speed: 0.18, turnRate: Math.PI / 2, turnInPlace: (25 * Math.PI) / 180 };
 
 /**
  * Pure kinematic step: advance `state` by `dt` seconds along its path.
@@ -198,7 +199,7 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
   }
 
   setSpeed(mps: number) {
-    this.params.speed = Math.min(2, Math.max(0.1, mps));
+    this.params.speed = Math.min(0.5, Math.max(0.03, mps));
   }
 
   getSpeed() {

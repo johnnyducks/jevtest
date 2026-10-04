@@ -4,8 +4,7 @@
  *
  * Deterministic given a seed and a clock, so it can be tested and replayed.
  */
-import type { Card, Environment } from "../twin/environment.ts";
-import { type Grid, isFreePoint } from "../twin/grid.ts";
+import type { Card } from "../twin/environment.ts";
 
 export interface Bonus {
   id: string;
@@ -29,7 +28,8 @@ export interface GameConfig {
   cardCooldownSec: number;
 }
 
-export const GAME: GameConfig = { spawnEverySec: [20, 40], lifetimeSec: [45, 90], points: [20, 80], maxActive: 3, cardCooldownSec: 120 };
+/** Bonuses are a treat, not a feed: one every couple of minutes, lasting long enough to drive to (even a few floors away). */
+export const GAME: GameConfig = { spawnEverySec: [90, 180], lifetimeSec: [150, 240], points: [20, 80], maxActive: 2, cardCooldownSec: 120 };
 
 const LABELS = ["Hot streak", "Rookie bonus", "Fan favorite", "Golden glove", "Rally cap", "Walk-off"];
 
@@ -63,7 +63,7 @@ export interface GameSnapshot {
 }
 
 export class Game {
-  private env: Environment;
+  private cards: Card[];
   private reachable: Card[];
   private config: GameConfig;
   private random: () => number;
@@ -73,12 +73,12 @@ export class Game {
   private nextSpawnAt: number;
   private seq = 0;
 
-  constructor(env: Environment, grid: Grid, opts: { seed?: number; now: number; config?: Partial<GameConfig> }) {
-    this.env = env;
+  /** `canReach` says whether Marty can get to a card at all (bonuses only go on reachable cards). */
+  constructor(cards: Card[], canReach: (c: Card) => boolean, opts: { seed?: number; now: number; config?: Partial<GameConfig> }) {
+    this.cards = cards;
     this.config = { ...GAME, ...opts.config };
     this.random = rng(opts.seed ?? 7);
-    // Only cards Marty can actually reach can hold bonuses.
-    this.reachable = env.cards.filter((c) => isFreePoint(grid, c.approach) && c.id !== "wagner-t206");
+    this.reachable = cards.filter(canReach);
     this.nextSpawnAt = opts.now + this.between(this.config.spawnEverySec) * 1000 * 0.5;
   }
 
@@ -117,7 +117,7 @@ export class Game {
 
   /** Points available at a card right now (base, unless on cooldown, plus any bonus). */
   valueAt(cardId: string, now: number): { base: number; bonus: Bonus | null } {
-    const card = this.env.cards.find((c) => c.id === cardId);
+    const card = this.cards.find((c) => c.id === cardId);
     const last = this.lastEarned.get(cardId);
     const base = card && (last === undefined || now - last >= this.config.cardCooldownSec * 1000) ? card.points : 0;
     return { base, bonus: this.bonuses.find((b) => b.cardId === cardId) ?? null };
@@ -125,7 +125,7 @@ export class Game {
 
   /** Marty reached a card on `handle`'s request: award its points. */
   arrive(cardId: string, handle: string, now: number): Award | null {
-    const card = this.env.cards.find((c) => c.id === cardId);
+    const card = this.cards.find((c) => c.id === cardId);
     if (!card) return null;
     const { base, bonus } = this.valueAt(cardId, now);
     const total = base + (bonus?.points ?? 0);
@@ -142,7 +142,7 @@ export class Game {
       bonuses: [...this.bonuses],
       scores,
       total: scores.reduce((a, s) => a + s.points, 0),
-      cardPoints: Object.fromEntries(this.env.cards.map((c) => [c.id, this.valueAt(c.id, now).base])),
+      cardPoints: Object.fromEntries(this.cards.map((c) => [c.id, this.valueAt(c.id, now).base])),
     };
   }
 

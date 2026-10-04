@@ -7,8 +7,7 @@
  */
 import { getBaseballKnowledge } from "../baseball/server";
 import { evaluate, jevConfig } from "../jev/client";
-import { ENVIRONMENT } from "../twin/environment";
-import { buildGrid } from "../twin/grid";
+import { BUILDING } from "../twin/environment";
 import { martySay } from "../voice/openai";
 import { LiveSession } from "./session";
 
@@ -20,8 +19,7 @@ export function getLive(): LiveSession {
   if (g.__martyLive) return g.__martyLive.session;
   const jev = jevConfig();
   const session = new LiveSession({
-    env: ENVIRONMENT,
-    grid: buildGrid(ENVIRONMENT),
+    building: BUILDING,
     evaluate: jev.configured ? (body) => evaluate(body) : null,
     jevModel: jev.model,
     say: martySay,

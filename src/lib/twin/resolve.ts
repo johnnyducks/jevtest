@@ -44,7 +44,7 @@ const aliasNorm = (a: string) => normalize(a);
  * Match card names/aliases as whole phrases. The longest matching phrase wins;
  * if more than one card ties for the longest match, the request is ambiguous.
  */
-export function resolveCardByName(env: Environment, text: string, restrictTo?: string[]): Resolution {
+export function resolveCardByName(env: { cards: Card[] }, text: string, restrictTo?: string[]): Resolution {
   const t = normalize(text);
   const pool = restrictTo ? env.cards.filter((c) => restrictTo.includes(c.id)) : env.cards;
   let bestLen = 0;

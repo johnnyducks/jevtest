@@ -55,6 +55,8 @@ export type ChatItem =
       to?: string[];
       facts?: PublicFact[];
       decision?: DecisionTrace;
+      /** Marty thinking out loud while nobody's talking. */
+      idle?: boolean;
     }
   | { id: string; kind: "system"; at: number; text: string; tone: "info" | "game" | "warn" };
 
@@ -62,6 +64,7 @@ export interface TripStop {
   name: string;
   cardId?: string;
   point: Vec;
+  floor: number;
   done: boolean;
 }
 
@@ -71,8 +74,8 @@ export interface PublicTrip {
   summary: string;
   status: "running" | "done" | "stopped" | "failed";
   stops: TripStop[];
-  /** Every drive leg's path, in order. */
-  legs: { path: Vec[]; done: boolean }[];
+  /** Every drive and ramp leg's path, in order. Ramp legs climb (or descend) between floors along `incline` (meters along the path). */
+  legs: { path: Vec[]; done: boolean; floor: number; ramp?: { from: number; to: number; incline: [number, number] } }[];
   estimate: { meters: number; seconds: number; battery: number };
   startedAt: number;
   /** What Marty is doing right now ("to Pete Rose", "climbing to the mezzanine"). */
@@ -82,6 +85,9 @@ export interface PublicTrip {
 export interface Telemetry {
   at: number;
   pose: Pose;
+  /** Floor Marty is on (1–6), and his continuous height in floors (fractional on a ramp). */
+  floor: number;
+  level: number;
   status: MotionStatus;
   speed: number;
   battery: { level: number; range: number; reserve: number; charging: boolean; dead: boolean };

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatItem, DecisionTrace, PublicFact } from "@/lib/live/types";
+import { formatLength, renderUnits, type Units } from "@/lib/units";
 
 const pct = (n: number | null) => (n === null ? "n/a" : `${Math.round(n * 100)}%`);
 
@@ -31,7 +32,7 @@ function Sources({ facts }: { facts?: PublicFact[] }) {
 }
 
 /** What Jev was asked, what it answered, and which rules changed the outcome. */
-function Trace({ d }: { d: DecisionTrace }) {
+function Trace({ d, units }: { d: DecisionTrace; units: Units }) {
   return (
     <div className="live-trace">
       <div className="lt-head">
@@ -68,7 +69,7 @@ function Trace({ d }: { d: DecisionTrace }) {
               {o.estimate && (
                 <span className="mono dim">
                   {" "}
-                  · {o.estimate.meters} m · {o.estimate.seconds} s · {Math.round(o.estimate.battery)}% (+{Math.round(o.estimate.homeBattery)}% home) · {o.estimate.points} pts
+                  · {formatLength(o.estimate.meters, units)} · {o.estimate.seconds} s · {Math.round(o.estimate.battery)}% (+{Math.round(o.estimate.homeBattery)}% home) · {o.estimate.points} pts
                 </span>
               )}
             </div>
@@ -99,7 +100,7 @@ function Trace({ d }: { d: DecisionTrace }) {
   );
 }
 
-export default function LiveChat({ chat, me }: { chat: ChatItem[]; me: string }) {
+export default function LiveChat({ chat, me, units }: { chat: ChatItem[]; me: string; units: Units }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -131,9 +132,9 @@ export default function LiveChat({ chat, me }: { chat: ChatItem[]; me: string })
       <div className="msg marty intro">
         <div className="msg-head mono">MARTY</div>
         <div className="msg-text">
-          I&apos;m Marty, live. Everyone can send me requests: one card, a tour (&quot;Ripken, then Bonds, then Mantle&quot;), a lap around the
-          display table, or the trip upstairs if you&apos;re feeling expensive. My brain, Jev, reads the room and picks. You score points when I
-          visit cards for you.
+          I&apos;m Marty, live from a six-floor card house built to my size. Send me anywhere: one card, a tour across floors (&quot;Ripken,
+          then Bonds, then Mantle&quot;), a lap of a floor, or straight up to the vault if you&apos;re feeling expensive. My brain, Jev, reads the
+          room and picks. You score points when I visit cards for you.
         </div>
       </div>
 
@@ -141,7 +142,7 @@ export default function LiveChat({ chat, me }: { chat: ChatItem[]; me: string })
         if (c.kind === "system") {
           return (
             <div key={c.id} className={`msg-system mono ${c.tone}`}>
-              {c.text}
+              {renderUnits(c.text, units)}
             </div>
           );
         }
@@ -160,9 +161,10 @@ export default function LiveChat({ chat, me }: { chat: ChatItem[]; me: string })
           );
         }
         return (
-          <div key={c.id} className="msg marty">
+          <div key={c.id} className={`msg marty${c.idle ? " idle" : ""}`}>
             <div className="msg-head mono">
               MARTY
+              {c.idle && <span className="intent-chip">thinking</span>}
               {c.source === "built-in" && (
                 <span className="tag rule" title="Built-in line (no text model configured, or it failed)">
                   built-in
@@ -176,7 +178,7 @@ export default function LiveChat({ chat, me }: { chat: ChatItem[]; me: string })
                 <i />
               </span>
             ) : (
-              <div className="msg-text">{c.text}</div>
+              <div className="msg-text">{renderUnits(c.text ?? "", units)}</div>
             )}
             <Sources facts={c.facts} />
             {c.decision && (
@@ -184,7 +186,7 @@ export default function LiveChat({ chat, me }: { chat: ChatItem[]; me: string })
                 <button className="trace-toggle mono" onClick={() => toggle(c.id)} aria-expanded={open.has(c.id)}>
                   {open.has(c.id) ? "hide decision" : "how Jev decided"}
                 </button>
-                {open.has(c.id) && <Trace d={c.decision} />}
+                {open.has(c.id) && <Trace d={c.decision} units={units} />}
               </>
             )}
           </div>

@@ -19,9 +19,12 @@ export interface BatteryConfig {
   reserve: number;
   /** At or below this, Marty cannot drive. */
   deadAt: number;
+  /** Extra % per meter of ramp climbed (on top of perMeter). Going down costs nothing extra. */
+  climbPerMeter: number;
 }
 
-export const BATTERY: BatteryConfig = { perMeter: 0.6, perRadian: 0.1, chargePerSecond: 2.5, dockRadius: 0.45, reserve: 10, deadAt: 1 };
+/** Tuned for a 4 in robot in a 4 × 8 ft building: a full charge drives about 36 m (≈118 ft); each ramp up costs ~7%. */
+export const BATTERY: BatteryConfig = { perMeter: 2.5, perRadian: 0.05, chargePerSecond: 1, dockRadius: 0.05, reserve: 10, deadAt: 1, climbPerMeter: 2 };
 
 export class Battery {
   readonly config: BatteryConfig;

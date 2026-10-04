@@ -1,6 +1,6 @@
 # MARTY.LIVE
 
-A live show starring Marty, a Moorebot Scout, in a fictional room full of baseball cards. Many people can watch at once. Each viewer picks a **@handle** and chats requests: *"Go to Griffey"*, *"Ripken, then Bonds, then Mantle"*, *"go around the display table"*, *"go upstairs"*. Jev, the decision engine, reads everyone's messages together and decides what Marty does next. Hard safety rules can veto its pick. Marty explains the decision in chat and drives the route on an overhead map. His battery drains with every meter, and the viewer who sent him earns the card's points.
+A live show starring Marty, a 4-inch Moorebot Scout, in a fictional six-floor card house built to his scale: each floor is 4 ft × 8 ft, floors are 16 in apart, joined by long ramps, with 35 real-size (2.5 × 3.5 in) baseball cards on the walls and furniture. Many people can watch at once. Each viewer picks a **@handle** and chats requests: *"Go to Griffey"*, *"Ripken, then Bonds, then Mantle"*, *"go around the welcome desk"*, *"take me to the vault"*. Jev, the decision engine, reads everyone's messages together and decides what Marty does next. Hard safety rules can veto its pick. Marty explains the decision in chat and drives the route on an overhead map. His battery drains with every meter, and the viewer who sent him earns the card's points.
 
 The map is a simulation that runs on the server. No commands are sent to the physical Scout.
 
@@ -62,7 +62,7 @@ Deterministic rules then apply hard limits. These are not model outputs:
 
 Marty takes the highest-ranked option that passes. Other allowed requests wait in a **queue** and are reconsidered when he's free (up to 3 times). Declined requests are explained. Marty then says what he's doing, for example:
 
-> I considered @amy's trip to the mezzanine (upstairs), but Jev judged it too taxing right now (74%). Let's do @bob's trip to Pete Rose instead, about 4.74 m and 3% battery. Worth 25 points.
+> I considered @amy's trip to floor 6 (The Vault · Pre-war), but Jev judged it too taxing right now (74%). Let's do @bob's trip to Ken Griffey Jr. instead, about 6 ft 2 in and 6% battery. Worth 35 points.
 
 **how Jev decided** under that line shows how Jev read each message, every option with Jev's returned probability (shown as returned), each option's status (chosen, queued, declined, not chosen) and reason, and the rule results. Questions ("how's your battery?", "who was Rickey Henderson?") are answered from Marty's state and the baseball knowledge service. If Jev can't be reached, Marty says so and doesn't move. While a decision is pending, an operator **Stop** also cancels it: a decision that comes back after a stop is reported but not carried out.
 
@@ -70,26 +70,34 @@ Marty takes the highest-ranked option that passes. Other allowed requests wait i
 
 | Try | What happens |
 | --- | --- |
-| "Go to Griffey" | One card. Route around the table and partition wall |
-| "Ripken, then Barry Bonds, then Mantle" | Multi-stop tour, in order. Also splits on commas, "and", "after that" and arrows |
+| "Go to Griffey" | One card. Marty plans around the furniture, drives there, and turns to face it |
+| "Ripken, then Barry Bonds, then Mantle" | Multi-stop tour, in order, across floors: Marty takes the ramps himself. Also splits on commas, "and", "after that" and arrows |
+| "3rd floor", "floor five", "top floor", "lobby", "the vault", "upstairs", "downstairs" | Go to a floor (one ramp at a time) and pull into the middle |
 | "go to heanderson" | Typo tolerance: the closest card name within 1–2 letters ("heanderson → henderson"). The correction is shown under the message. Ties are never guessed |
 | "Go to Bonds" | Two Bonds cards exist, so Marty asks which one |
-| "go around the display table" / "lap the room" | A closed loop clear of the furniture |
-| "go upstairs" | Drives to the ramp, then climbs to the mezzanine and back: +14% battery and +30 s on top of the drive |
-| "nearest card", "the dock", "the middle", "the other side" | Named places |
+| "go around the welcome desk" / "lap the floor" | A closed loop clear of the furniture, on Marty's current floor |
+| "nearest card", "the dock", "the middle", "the other side" | Named places on Marty's current floor |
 | "Go to Honus Wagner" | The card sits in a locked vault: Marty explains it's unreachable |
 
 ### Battery
 
-Battery drains from **measured simulated movement**, not time. Each move counts the distance driven (0.6% per meter) and the turning (0.1% per radian). The ramp climb costs a fixed 14%. The HUD shows the battery % and the **driving range** in meters above the 10% reserve. During a trip it also shows meters left and the ETA. Parked at the dock, Marty recharges at 2.5% per second. The numbers live in `lib/twin/battery.ts`.
+Battery drains from **measured simulated movement**, not time. Each move counts the distance driven (2.5% per meter, about 0.06% per inch) and the turning (0.05% per radian). Climbing a ramp costs an extra 2% per meter of incline, about 7% per floor in total; going down costs nothing extra. A full charge drives about 118 ft. The HUD shows the battery %, the **driving range** above the 10% reserve, and during a trip the distance left and the ETA. Every floor has a charging dock (1% per second); "home" in the reserve rule means the dock on the floor the trip ends on. The numbers live in `lib/twin/battery.ts`.
 
 ### Points and bonuses
 
-Every card has base points according to how sought-after it is (Mantle 60, Robinson 50, Aaron 40, Griffey 35, and so on; `lib/twin/environment.ts`). When Marty reaches a card on your trip, you earn its points. A card's base points pay out again 2 minutes after a visit. Every 20–40 seconds a **bonus** (+20 to +80) spawns on a reachable card and expires after 45–90 seconds. Badges on the map show what each card is worth right now; bonus cards glow gold. The leaderboard and active bonuses sit under the map (`lib/game/game.ts`).
+Every card has base points according to how sought-after it is (Mantle 60, Robinson 50, Aaron 40, Griffey 35, and so on; `lib/twin/environment.ts`). When Marty reaches a card on your trip, you earn its points (Ruth 100, Gehrig and Cobb 70, Mantle and DiMaggio 60…). A card's base points pay out again 2 minutes after a visit. Bonuses are a treat, not a feed: every 1½–3 minutes a **bonus** (+20 to +80) spawns on a reachable card, at most two at a time, and lasts 2½–4 minutes, long enough to drive a few floors for it. Badges on the map show what each card is worth right now; bonus cards glow gold. The leaderboard and active bonuses sit under the map (`lib/game/game.ts`).
+
+### When nobody's talking
+
+If the chat goes quiet for a little over a minute and someone is watching, Marty thinks out loud: a wry, slightly existential musing ("Why does a robot care this much about cardboard?"), an idea for viewers, or a look at a card on his floor. Each musing waits twice as long as the one before (up to 15 minutes) until someone speaks, which resets the clock. With a text model the lines are written fresh from a rotating set of topics; without one, Marty uses built-in musings. They're marked **thinking** in the chat.
+
+### Units
+
+The **in / cm** toggle next to the view switch shows every distance in inches and feet or in centimeters and meters: the HUD, map grid and labels, the decision trace and Marty's own lines. Marty's lines go to everyone at once, so distances in them are stored as markers and each browser shows them in its own units. The setting is remembered per browser.
 
 ### Operator controls
 
-The gear icon on the map has Stop, Resume (finishes the remaining stops), Dock, Reset (clears chat, scores and battery for everyone), speed, heading, a battery slider for testing, and the clearance overlay. Operators can also drag Marty to a new spot. Set `OPERATOR_KEY` to require a key for all of these; it's entered in the gear menu and remembered in that browser.
+The gear icon on the map has Stop, Resume (finishes the remaining stops), Dock, Reset (clears chat, scores and battery for everyone), speed, heading, a battery slider for testing, and the clearance overlay. Operators can also drag Marty to a new spot on the floor being viewed. Set `OPERATOR_KEY` to require a key for all of these; it's entered in the gear menu and remembered in that browser.
 
 ### Who decides what
 
@@ -129,16 +137,36 @@ The search runs once per card. Results are saved to `data/cardsight/matches.json
 
 The **2D / 3D / FPV** switch at the bottom-right of the map changes only how the room is drawn. All three views show the same live simulation: Marty's position and heading, the route, cards, bonuses and points come from the server stream. Switching never touches the simulation, so Marty keeps driving. Your choice is remembered in this browser.
 
-- **2D**: the original top-down map, unchanged.
-- **3D**: an observer camera. Drag to orbit, scroll or pinch to zoom, right-drag to pan. The near wall is see-through. Click a card to request it.
-- **Arriving at a card**, Marty turns in place to face it squarely: the route plan includes that final turn, and it's counted in the time and battery estimates. In FPV the camera then tilts up and zooms in so the card fills about 80% of the frame, and eases back out as he drives off. The framing rule, `framing()` in `lib/twin/space3d.ts`, is tested for every reachable card.
-- **FPV**: the view from a camera mounted on Marty, 16 cm up and just in front of his center, tilted up 7°. It moves with every pose update, and turns are damped slightly so they feel like a camera rather than a cut. A reticle, heading and position readout, and labels sit on top: card name and current points for cards within about 4.5 m ahead, plus a **NEXT** marker on the trip's next stop.
+- **2D**: the top-down map of one floor.
+- **3D**: an observer camera on a dollhouse cutaway: the floors above the one you're viewing are hidden, so you see into it, with the floors below underneath and the ramp openings to look down through. Drag to orbit, scroll or pinch to zoom, right-drag to pan. Click a card to request it.
+- **Floors**: the numbers on the left of the map pick which floor you're looking at (2D and 3D). The green dot marks Marty's floor, and the HUD always says which floor he's on. Pick his floor again, or ⌖, to follow him as he changes floors.
+- **Arriving at a card**, Marty turns in place to face it squarely: the route plan includes that final turn, and it's counted in the time and battery estimates. In FPV the camera then tilts so the card (a real 3.5 in card, from about 3.3 in away) fills most of the frame, and eases back out as he drives off. The framing rule, `framing()` in `lib/twin/space3d.ts`, is tested for every reachable card.
+- **FPV**: the view from a camera on Marty's nose, about 2.3 in up, tilted up 5°. The floor above is his ceiling. On ramps he rises with the incline and looks along it. It moves with every pose update, and turns are damped slightly so they feel like a camera rather than a cut. A reticle, floor, heading and position readout, and labels sit on top: card name and current points for cards on his floor within about 3 ft ahead, plus a **NEXT** marker on the trip's next stop.
 
 The 2D→3D mapping lives in `lib/twin/space3d.ts`. It holds the axes, heights of walls and furniture, card placement and the FPV camera mount, and its tests check that the camera follows the same poses the 2D map draws. Rendering uses Three.js through React Three Fiber (`components/three/Room3D.tsx`). That code loads only when someone opens a 3D view. Without WebGL, the 3D views show a short notice and the 2D map still works.
 
 ### Environment
 
-The room is 12 m × 8 m, with the origin at the bottom-left and +y pointing north. All map elements go through one world→screen transform (`lib/twin/geometry.ts`). The room and card catalog are plain data in `lib/twin/environment.ts`. The obstacles are a partition wall, a display table, two plinths, a low shelf, an equipment rack and a locked vault cage. There is a ramp up to the mezzanine in the north-west corner. The cards are Ken Griffey Jr., Rickey Henderson, Bobby Bonds, Barry Bonds, Cal Ripken Jr., Hank Aaron, Jackie Robinson, Ichiro Suzuki, Mickey Mantle, Pete Rose and Honus Wagner (the one in the vault). Their positions are fictional.
+The building is plain data in `lib/twin/environment.ts`, with all sizes in real units:
+
+| | Size |
+| --- | --- |
+| Each floor | 8 ft (east–west) × 4 ft (north–south) |
+| Floor to floor | 16 in |
+| Ramps | 64 in long, 7.5 in wide: a 16 in rise at about 14°, gentle enough for the treads. A switchback, like a parking garage: odd floors climb along the south wall heading east, even floors along the north wall heading west. Each floor has an opening where the ramp from below arrives |
+| Marty | 4 in wide × 4.3 in long. The planner keeps his turning circle (half his diagonal, 2.9 in) plus ½ in clearance away from everything, on a ¼ in (1 cm) grid |
+| Cards | 2.5 × 3.5 in, mounted with their centre about 2.75 in up. Marty stops about 5 in from a card and turns to face it |
+
+| Floor | Theme | Cards |
+| --- | --- | --- |
+| 1 | Lobby · modern era | Griffey (1989 UD), Ichiro (2001), Ohtani (2018 Update), Jeter (1993 SP), Trout (2011 Update), Pujols (2001 Bowman Chrome) |
+| 2 | The '80s & '90s | Henderson, Ripken (1982 Traded), Gwynn, Mattingly (1984 Donruss), McGwire, Barry Bonds, Frank Thomas (1990 Leaf) |
+| 3 | The '70s | Schmidt, Brett, Ozzie Smith, Reggie Jackson, Bobby Bonds |
+| 4 | The '60s | Maris, Rose, Nolan Ryan, Bench, Koufax |
+| 5 | The '50s | Jackie Robinson, Mantle, Mays, Aaron, Banks, Ted Williams, Clemente |
+| 6 | The Vault · pre-war | Ruth and Gehrig (1933 Goudey), Cobb (T206), DiMaggio (1941 Play Ball), Honus Wagner (T206, locked in a cage, unreachable by design) |
+
+Positions are fictional. The origin of each floor is its south-west corner, +y north. All map elements go through one world→screen transform (`lib/twin/geometry.ts`).
 
 ### Future hardware
 
@@ -162,7 +190,7 @@ Each fact Marty uses shows its source under the message.
 | Player resolution | Card aliases plus full names across all ~20,000 people; longest match wins. Same-name players (Ken Griffey Sr./Jr., the two Bondses) come back as **ambiguous**, so Marty asks rather than guesses. "Jr."/"Sr." decide between same-name players. Managers with no playing career (Cal Ripken Sr.) are set aside | `store.ts` |
 | Fact selection | Ranked by relevance: card's issue-year season and team, then big career achievements, league leads, awards, connections between cards in the room, then Wikipedia trivia. Skips facts already shared and varies the kind of fact | `facts.ts` |
 | Commentary policy | One volunteered fact per trip; quiet for 60 s after a card is discussed, then it counts as a revisit; 8 s minimum gap between unprompted comments; never talks over a reply in progress. Questions always get an answer | `src/lib/baseball/commentary.ts` |
-| Orchestration | Listens to the existing mission controller and asks `/api/reply` for lines with the right knowledge request. Async; failures fall back to built-in lines; never touches motion | `src/lib/voice/director.ts` |
+| Orchestration | The live session asks for facts on arrival at a card and for viewers' questions. Async; failures fall back to built-in lines; never touches motion | `src/lib/live/session.ts` |
 | Voice | The persona prompt gets a BASEBALL FACTS block. Every number, award or story must come from it, copied exactly; sourced items are hedged; ambiguous names → ask | `src/lib/voice/openai.ts` |
 
 The knowledge layer is model-agnostic: it returns facts, and only `openai.ts` knows about prompts. Exact statistics always come from deterministic queries. The text model only narrates them.
@@ -206,12 +234,13 @@ Wikipedia supplements the statistics with biography and trivia:
 ```
 src/
   lib/live/           the live session (one Marty, many viewers), its server singleton, stream types, built-in lines
-  lib/decision/       batch.ts: Jev batch arbitration + rules; engine/policy/questions: single-request engine (/api/decide)
+  lib/decision/       batch.ts: Jev batch arbitration + rules; contracts.ts: shared API shapes
   lib/jev/            Jev API types (from the published OpenAPI spec) + server-only client
   lib/game/           points, bonuses, leaderboard
   lib/cardsight/      CardSight AI client (server), strict card matching, image cache + local overrides
   lib/twin/           environment & cards, geometry, occupancy grid, A*, resolution, typo matching,
-                      multi-stop routes, battery, motion (PoseSource + SimulatedMotion), single-user controller
+                      multi-floor routes and ramps, battery, motion (PoseSource + SimulatedMotion), 2D↔3D mapping
+  lib/units.ts        inches/feet vs cm/m formatting, and the distance markers used in shared chat text
   lib/voice/          Marty's voice: persona + OpenAI calls (server), built-in lines
   lib/baseball/       knowledge store, fact building/selection, Wikipedia client, commentary policy, service
   scripts/            import-lahman.ts (Lahman CSV → data/baseball/knowledge.json)
@@ -219,8 +248,6 @@ src/
   app/api/live/stream GET: Server-Sent Events (snapshot, chat, telemetry, trip, game)
   app/api/live/chat   POST { handle, text }: queue a viewer message
   app/api/live/operator POST { action, key? }: stop, resume, dock, reset, place, rotate, speed, battery
-  app/api/decide      POST: one message + twin context → DecisionResult (single-user engine, still available)
-  app/api/reply       POST: outcome facts + recent chat → Marty's reply
   app/api/cards       GET: card artwork for the room (CardSight link + image URLs); /api/cards/<id>/image proxies the front
   app/api/status      GET: which models are configured, whether an operator key is required (no secrets)
   components/         Studio (header), Popover, live/LiveView + LiveChat + useLive, twin/TwinMap (SVG),

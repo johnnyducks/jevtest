@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFacts, selectFacts } from "../facts.ts";
 import { WikipediaClient, wikiFacts } from "../wikipedia.ts";
-import { builtInReply } from "../../voice/lines.ts";
-import { martyReply } from "../../voice/openai.ts";
+import { answerLine } from "../../live/lines.ts";
+import { martySay } from "../../voice/openai.ts";
 import { fixtureData, fixtureStore, griffeyCard, service, wikiFetch } from "./helpers.ts";
 
 test("1. importing a small Lahman dataset builds players, careers, teams and ranks", () => {
@@ -69,8 +69,8 @@ test("6. an ambiguous name never invents an identity", async () => {
   assert.equal(b.status, "ambiguous");
   assert.deepEqual(b.facts, []);
   assert.equal(store.resolvePlayer("Ken Griffey Jr. please").status, "resolved");
-  assert.equal(store.resolvePlayer("who is Ryan").status, "not_found");
-  const reply = builtInReply({ status: "answered", request: "tell me about Ken Griffey", seq: 1, facts: "" }, [], await service().bundle({ trigger: "ask", text: "tell me about Ken Griffey" }));
+  assert.equal(store.resolvePlayer("who is Zzyzx").status, "not_found");
+  const reply = answerLine("amy", await service().bundle({ trigger: "ask", text: "tell me about Ken Griffey" }), { level: 80, range: 28, reserve: 10 }, "parked");
   assert.match(reply, /Ken Griffey Jr\. \(1989–2010\) or Ken Griffey \(1973–1991\)/);
 });
 
@@ -78,11 +78,11 @@ test("7. commentary is generated from retrieved facts (model prompt and built-in
   const bundle = await service().bundle({ trigger: "navigate", cardId: "griffey-89" });
   const fact = bundle.facts[0];
   assert.ok(fact);
-  const outcome = { status: "moving" as const, request: "Go to Griffey", seq: 1, target: "Ken Griffey Jr.", routeMeters: 11.98, detour: true, facts: "" };
+  const say = (fallback: string) => ({ kind: "arrive" as const, to: ["amy"], instruction: "You just pulled up to the card.", facts: "arrived at: Ken Griffey Jr.", fallback, knowledge: bundle, history: [] });
 
   // Built-in voice quotes the fact verbatim.
   delete process.env.OPENAI_API_KEY;
-  const local = await martyReply(outcome, [], bundle);
+  const local = await martySay(say(`Made it. While I'm here: ${fact.text}`));
   assert.equal(local.source, "built-in");
   assert.ok(local.text.includes(fact.text));
 
@@ -95,11 +95,12 @@ test("7. commentary is generated from retrieved facts (model prompt and built-in
     return new Response(JSON.stringify({ model: "gpt-test", choices: [{ message: { content: "Off to Griffey. Fun one coming up." } }] }), { status: 200 });
   }) as unknown as typeof fetch;
   try {
-    const r = await martyReply(outcome, [], bundle);
+    const r = await martySay(say("unused"));
     assert.equal(r.source, "openai");
     assert.ok(sent.includes("BASEBALL FACTS"));
     assert.ok(sent.includes(JSON.stringify(fact.text).slice(1, -1)));
     assert.ok(sent.includes("trigger: navigate"));
+    assert.ok(sent.includes("LIVE SHOW"), "live rules are part of the prompt");
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.OPENAI_API_KEY;
