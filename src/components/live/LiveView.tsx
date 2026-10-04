@@ -17,6 +17,7 @@ import Popover from "../Popover";
 import TwinMap from "../twin/TwinMap";
 import LiveChat from "./LiveChat";
 import { useLive, useSmoothPose, useStored } from "./useLive";
+import { useMartyVoice } from "./useMartyVoice";
 
 // The 3D views load only when someone opens them, so the 2D map stays as light as before.
 const Room3D = dynamic(() => import("../three/Room3D"), {
@@ -127,7 +128,7 @@ function Scoreboard({ snap, me }: { snap: LiveSnapshot; me: string }) {
   );
 }
 
-export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
+export default function LiveView({ keyRequired, speechAvailable = false }: { keyRequired: boolean; speechAvailable?: boolean }) {
   const { snap, connected } = useLive();
   // Every viewer draws the server's catalog: apply it whenever it changes (an admin edit, or a reconnect).
   const catalogKey = snap ? `${snap.epoch}:${snap.catalogVersion}` : "";
@@ -153,6 +154,9 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   const [art, reloadArt] = useCardArt(catalogKey);
   const [checking, setChecking] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [storedVoice, setVoice] = useStored("marty.voice");
+  const voiceOn = speechAvailable && storedVoice === "on";
+  const voice = useMartyVoice(snap?.chat, voiceOn, units);
   const [hoverCard, setHoverCard] = useState<{ card: Card; at: { x: number; y: number } } | null>(null);
   const [openCard, setOpenCard] = useState<Card | null>(null);
 
@@ -296,6 +300,22 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
             <span className="viewers mono" title="People watching right now">
               <span className={`dot ${connected ? "on" : ""}`} /> {snap.viewers} watching
             </span>
+            {speechAvailable && (
+              <button
+                className={`corner-btn mono voice-btn${voiceOn ? " on" : ""}${voice.blocked ? " blocked" : ""}${voice.speaking ? " speaking" : ""}`}
+                aria-pressed={voiceOn}
+                title={voice.error ?? (voice.blocked ? "Your browser paused the sound: click to hear Marty" : voiceOn ? "Marty speaks his lines out loud (ElevenLabs). Click to mute." : "Hear Marty speak his lines out loud (ElevenLabs)")}
+                onClick={() => {
+                  if (voiceOn && !voice.blocked) setVoice("");
+                  else {
+                    setVoice("on");
+                    voice.unlock();
+                  }
+                }}
+              >
+                {voiceOn ? (voice.blocked ? "🔈 Tap to hear" : "🔊 Voice") : "🔇 Voice"}
+              </button>
+            )}
             <button className="corner-btn mono" onClick={() => setCatalogOpen(true)} title="Card catalog: every card, where it is, and its CardSight status">
               Cards
             </button>
@@ -409,7 +429,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
       </section>
 
       <aside className="twin-chat" aria-label="Live chat">
-        <LiveChat chat={snap.chat} me={handle} units={units} />
+        <LiveChat chat={snap.chat} me={handle} units={units} speech={speechAvailable ? { speaking: voice.speaking, say: voice.say } : undefined} />
         {(snap.deciding || snap.queue.length > 0) && (
           <div className="live-status mono">
             {snap.deciding && (

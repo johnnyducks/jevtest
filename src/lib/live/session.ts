@@ -294,6 +294,12 @@ export class LiveSession {
     this.upsert({ id: this.id("s"), kind: "system", at: this.deps.now(), text, tone });
   }
 
+  /** A finished Marty line's text (for reading it aloud), or undefined. */
+  martyLine(id: string): string | undefined {
+    const c = this.chat.find((x) => x.id === id);
+    return c?.kind === "marty" && c.state === "done" && c.text ? c.text : undefined;
+  }
+
   private viewerItem(id: string) {
     const c = this.chat.find((x) => x.id === id);
     return c?.kind === "viewer" ? c : undefined;

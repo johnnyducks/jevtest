@@ -31,6 +31,8 @@ export interface StatusBody {
   operator: { keyRequired: boolean };
   /** CardSight AI card images. */
   cards: { configured: boolean };
+  /** ElevenLabs: Marty's spoken voice. */
+  speech: { configured: boolean };
 }
 
 export const MAX_MESSAGE_CHARS = 4000;

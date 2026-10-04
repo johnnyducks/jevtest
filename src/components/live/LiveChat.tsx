@@ -100,7 +100,18 @@ function Trace({ d, units }: { d: DecisionTrace; units: Units }) {
   );
 }
 
-export default function LiveChat({ chat, me, units }: { chat: ChatItem[]; me: string; units: Units }) {
+export default function LiveChat({
+  chat,
+  me,
+  units,
+  speech,
+}: {
+  chat: ChatItem[];
+  me: string;
+  units: Units;
+  /** Marty's voice, when ElevenLabs is set up: which line is playing, and replay one. */
+  speech?: { speaking: string | null; say: (id: string) => void };
+}) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -161,9 +172,14 @@ export default function LiveChat({ chat, me, units }: { chat: ChatItem[]; me: st
           );
         }
         return (
-          <div key={c.id} className={`msg marty${c.idle ? " idle" : ""}`}>
+          <div key={c.id} className={`msg marty${c.idle ? " idle" : ""}${speech?.speaking === c.id ? " speaking" : ""}`}>
             <div className="msg-head mono">
               MARTY
+              {speech && c.state === "done" && c.text && (
+                <button className="say-btn" title="Hear this line" aria-label="Hear this line" onClick={() => speech.say(c.id)}>
+                  {speech.speaking === c.id ? "🔊" : "🔈"}
+                </button>
+              )}
               {c.idle && <span className="intent-chip">thinking</span>}
               {c.source === "built-in" && (
                 <span className="tag rule" title="Built-in line (no text model configured, or it failed)">

@@ -41,3 +41,12 @@ export function renderUnits(text: string, units: Units): string {
 
 /** Plain-meters version for models and logs that don't render markers. */
 export const stripUnits = (text: string) => renderUnits(text, "metric");
+
+const SPOKEN: Record<string, [string, string]> = { ft: ["foot", "feet"], in: ["inch", "inches"], cm: ["centimeter", "centimeters"], m: ["meter", "meters"] };
+
+/** Replace {{m:…}} markers with lengths read aloud: "3 feet 4 inches", "36 centimeters". */
+export function speakUnits(text: string, units: Units): string {
+  return text.replace(MARKER, (_, m) =>
+    formatLength(Number(m), units).replace(/([\d.,]+) (ft|in|cm|m)\b/g, (_s, n: string, u: string) => `${n} ${SPOKEN[u][n === "1" ? 0 : 1]}`),
+  );
+}

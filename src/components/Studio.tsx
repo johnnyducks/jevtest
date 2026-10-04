@@ -77,7 +77,7 @@ export default function Studio() {
       </header>
 
       <main className="main-twin">
-        <LiveView keyRequired={status?.operator?.keyRequired ?? false} />
+        <LiveView keyRequired={status?.operator?.keyRequired ?? false} speechAvailable={status?.speech?.configured ?? false} />
       </main>
     </div>
   );

@@ -4,6 +4,7 @@ import { voiceConfig } from "@/lib/voice/openai";
 import { knowledgeStatus } from "@/lib/baseball/server";
 import { cardsightConfig } from "@/lib/cardsight/client";
 import { operatorKeyRequired } from "@/lib/live/server";
+import { speechConfig } from "@/lib/voice/elevenlabs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export function GET() {
     knowledge: knowledgeStatus(),
     operator: { keyRequired: operatorKeyRequired() },
     cards: { configured: cardsightConfig().configured },
+    speech: { configured: speechConfig().configured },
   };
   return Response.json(body, { headers: { "Cache-Control": "no-store" } });
 }

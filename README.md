@@ -23,6 +23,7 @@ Requires Node 20.9+. A Jev API key is required. Without one, Marty answers that 
 | `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's lines |
 | `CARDSIGHT_API_KEY` | no | — | Real card images from [CardSight AI](https://cardsight.ai) (`CARDSIGHTAI_API_KEY` also accepted; `CARDSIGHT_API_BASE` overrides the URL) |
 | `BATTERY_CAPACITY` | no | `100` | How many times bigger Marty's battery is than the baseline. Higher = Marty drives farther and declines fewer trips; `1` = the baseline (a full charge drives ~118 ft) |
+| `ELEVENLABS_API_KEY` | no | — | Marty speaks his lines out loud via [ElevenLabs](https://elevenlabs.io). `ELEVENLABS_VOICE_ID` picks the voice (default: Brian), `ELEVENLABS_MODEL` the model (default `eleven_flash_v2_5`) |
 | `MARTY_DATA_DIR` | no | `~/.marty-live` | Where your card catalog edits and CardSight matches are saved (outside the app folder, so updates don't lose them) |
 | `OPERATOR_KEY` | no | — | Locks the gear-menu controls (stop, resume, dock, reset, placement, speed, battery) behind a key. Without it, anyone who opens the page can use them |
 | `WIKIPEDIA_ENABLED` | no | `true` | Set to `false` to use Lahman data only |
@@ -247,6 +248,14 @@ Wikipedia supplements the statistics with biography and trivia:
 - **Wikipedia:** CC BY-SA 4.0. Messages using Wikipedia facts link to the article; the revision and retrieval date appear on hover.
 - Before any commercial use, review the current terms on SABR's Lahman page. The 2025 release includes Negro Leagues data licensed from Seamheads, which may carry its own terms. Also check that share-alike obligations fit your product.
 
+### Marty's voice (ElevenLabs)
+
+With `ELEVENLABS_API_KEY` set, a **🔇 Voice** button appears in the map's top-right corner. Click it (it turns to **🔊 Voice**) and Marty reads his new chat lines out loud: replies, arrivals and his musings when it's quiet. Lines already in the chat aren't read back; each Marty message gets a small 🔈 button to hear it on demand. Voice is per viewer and off until they turn it on (browsers only allow sound after a click). If the browser still holds the sound back after a reload, the button pulses **Tap to hear**.
+
+The key stays on the server. Browsers ask for a line by its chat ID (`/api/live/speech/<id>`), never with free text, so the key can only ever read Marty's own lines. Each line is sent to ElevenLabs once and shared by everyone listening (separately for inch and centimeter viewers, since distances are read aloud: "3 feet 4 inches"). Nothing is sent to ElevenLabs while nobody has the voice on. If a call fails, hovering the Voice button says why (key rejected, out of credits, unknown voice, can't reach ElevenLabs).
+
+To change the voice, copy a voice ID from the ElevenLabs Voice Library into `ELEVENLABS_VOICE_ID` and restart.
+
 ## Architecture
 
 ```
@@ -259,12 +268,13 @@ src/
   lib/twin/           environment & cards, geometry, occupancy grid, A*, resolution, typo matching,
                       multi-floor routes and ramps, battery, motion (PoseSource + SimulatedMotion), 2D↔3D mapping
   lib/units.ts        inches/feet vs cm/m formatting, and the distance markers used in shared chat text
-  lib/voice/          Marty's voice: persona + OpenAI calls (server), built-in lines
+  lib/voice/          Marty's voice: persona + OpenAI calls (server), built-in lines; elevenlabs.ts: speech (server)
   lib/baseball/       knowledge store, fact building/selection, Wikipedia client, commentary policy, service
   scripts/            import-lahman.ts (Lahman CSV → data/baseball/knowledge.json)
   data/baseball/      generated knowledge file + its license/attribution note
   app/api/live/stream GET: Server-Sent Events (snapshot, chat, telemetry, trip, game)
   app/api/live/chat   POST { handle, text }: queue a viewer message
+  app/api/live/speech/<id> GET: one of Marty's lines as audio (ElevenLabs, cached)
   app/api/live/operator POST { action, key? }: stop, resume, dock, reset, place, rotate, speed, battery
   app/api/cards       GET: card artwork for the room (CardSight link + image URLs); /api/cards/<id>/image proxies the front
   app/api/status      GET: which models are configured, whether an operator key is required (no secrets)

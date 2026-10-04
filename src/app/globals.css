@@ -4471,3 +4471,34 @@ pre.code {
   max-width: none;
   white-space: normal;
 }
+
+/* Marty's voice (ElevenLabs) */
+.voice-btn.on {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.voice-btn.blocked {
+  animation: voice-pulse 1.4s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--accent-line);
+  }
+}
+.say-btn {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.say-btn:hover,
+.msg.marty.speaking .say-btn {
+  opacity: 1;
+}
+.msg.marty.speaking {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
