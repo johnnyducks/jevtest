@@ -18,6 +18,7 @@ import { type Building, type Card, DIMENSIONS, floorEnv, type Obstacle, type Pos
 import type { MotionStatus } from "@/lib/twin/motion";
 import { CARD_SIZE, cardPlacement, floorBase, fpvCamera, framing, HEIGHTS, MARTY, obstacleBox, toScene, type V3 } from "@/lib/twin/space3d";
 import { formatShort, type Units } from "@/lib/units";
+import { type PlantTemplates, Succulents, usePlantTemplates } from "./Succulent";
 
 export type CameraMode = "fpv" | "orbit";
 
@@ -66,6 +67,7 @@ const OBSTACLE_COLOR: Record<Obstacle["kind"], string> = {
   cage: "#7f1d1d",
   ramp: "#2a2112",
   opening: "#000000",
+  planter: "#6b7d5c",
 };
 
 const { floorWidth: W, floorDepth: D, floorHeight: FH, slab: SLAB } = DIMENSIONS;
@@ -235,7 +237,7 @@ function Furniture({ obstacles }: { obstacles: Obstacle[] }) {
   return (
     <>
       {obstacles.map((o) => {
-        if (o.kind === "ramp" || o.kind === "opening") return null;
+        if (o.kind === "ramp" || o.kind === "opening" || o.kind === "planter") return null;
         if (o.kind === "cage") return <Cage key={o.id} o={o} />;
         const bx = obstacleBox(o);
         return (
@@ -355,7 +357,7 @@ function CardFrame({ b, card, src, bonus, target, onGo }: { b: Building; card: C
   );
 }
 
-function FloorLevel({ b, level, see, bonusIds, targetIds, art, onGo }: { b: Building; level: number; see: boolean; bonusIds: Set<string>; targetIds: Set<string>; art?: Record<string, CardArt>; onGo: (c: Card) => void }) {
+function FloorLevel({ b, level, see, bonusIds, targetIds, art, plants, onGo }: { b: Building; level: number; see: boolean; bonusIds: Set<string>; targetIds: Set<string>; art?: Record<string, CardArt>; plants: PlantTemplates | null; onGo: (c: Card) => void }) {
   const env = floorEnv(b, level);
   const up = b.ramps.find((r) => r.from === level);
   return (
@@ -363,6 +365,7 @@ function FloorLevel({ b, level, see, bonusIds, targetIds, art, onGo }: { b: Buil
       <Slab b={b} level={level} />
       <Walls see={see} />
       <Furniture obstacles={env.obstacles} />
+      <Succulents b={b} level={level} templates={plants} />
       {up && <RampDeck r={up} />}
       <Dock at={env.dock} />
       {env.cards.map((c) => (
@@ -649,6 +652,7 @@ const Scene = memo(function Scene({
   mode,
   viewFloor,
   art,
+  plants,
   onCardGo,
   slots,
 }: {
@@ -659,6 +663,7 @@ const Scene = memo(function Scene({
   mode: CameraMode;
   viewFloor: number;
   art?: Record<string, CardArt>;
+  plants: PlantTemplates | null;
   onCardGo: (c: Card) => void;
   slots: React.RefObject<LabelSlots>;
 }) {
@@ -674,7 +679,7 @@ const Scene = memo(function Scene({
       {b.floors
         .filter((f) => f.level <= maxFloor)
         .map((f) => (
-          <FloorLevel key={f.level} b={b} level={f.level} see={mode === "orbit" && f.level === viewFloor} bonusIds={bonusIds} targetIds={targetIds} art={art} onGo={onCardGo} />
+          <FloorLevel key={f.level} b={b} level={f.level} see={mode === "orbit" && f.level === viewFloor} bonusIds={bonusIds} targetIds={targetIds} art={art} plants={plants} onGo={onCardGo} />
         ))}
       <Route trip={trip} maxFloor={maxFloor} />
       <Marty live={live} visible={mode === "orbit"} />
@@ -695,6 +700,7 @@ export default function Room3D(props: Props) {
   const goRef = useRef(props.onCardGo);
   goRef.current = props.onCardGo;
   const onGo = useCallback((c: Card) => goRef.current(c), []);
+  const plants = usePlantTemplates();
   const nextStop = trip?.status === "running" ? trip.stops.find((s) => !s.done) : undefined;
   const bonusAt = new Map(bonuses.map((x) => [x.cardId, x]));
 
@@ -711,7 +717,7 @@ export default function Room3D(props: Props) {
         }}
         fallback={<div className="three-fallback mono">3D needs WebGL, which this browser doesn&apos;t provide. The 2D map still works.</div>}
       >
-        <Scene b={b} live={live} trip={trip} bonuses={bonuses} mode={mode} viewFloor={props.viewFloor} art={props.art} onCardGo={onGo} slots={slots} />
+        <Scene b={b} live={live} trip={trip} bonuses={bonuses} mode={mode} viewFloor={props.viewFloor} art={props.art} plants={plants} onCardGo={onGo} slots={slots} />
       </Canvas>
 
       <div className="three-labels" aria-hidden>

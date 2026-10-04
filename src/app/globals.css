@@ -4502,3 +4502,28 @@ pre.code {
 .msg.marty.speaking {
   box-shadow: inset 2px 0 0 var(--accent);
 }
+
+/* Succulents on the 2D map */
+.decor-plant {
+  pointer-events: auto;
+}
+.decor-plant .pot {
+  fill: #2a2622;
+  stroke: rgba(214, 196, 170, 0.55);
+  stroke-width: 1;
+}
+.decor-plant .leaf {
+  fill: #7fa38a;
+  stroke: rgba(20, 30, 22, 0.5);
+  stroke-width: 0.5;
+}
+.decor-plant .heart {
+  fill: #b9d4a8;
+}
+.plant-model {
+  flex-wrap: wrap;
+}
+.plant-model .dim {
+  font-size: 11px;
+  opacity: 0.7;
+}

@@ -248,6 +248,12 @@ Wikipedia supplements the statistics with biography and trivia:
 - **Wikipedia:** CC BY-SA 4.0. Messages using Wikipedia facts link to the article; the revision and retrieval date appear on hover.
 - Before any commercial use, review the current terms on SABR's Lahman page. The 2025 release includes Negro Leagues data licensed from Seamheads, which may carry its own terms. Also check that share-alike obligations fit your product.
 
+### Succulents
+
+Nine potted succulents decorate the building. Five small bowls sit on furniture next to cards: the lobby desk, the '80s display case, the '70s shelf, the '50s gallery case and the vault pedestal. Four bigger pots stand in floor corners by the wall cards. The floor pots are small obstacles that Marty drives around. Every card that was reachable still is (there's a test for it). They show up as little rosettes on the 2D map and as potted plants in 3D and FPV. Positions are in `DECOR` in `src/lib/twin/environment.ts`.
+
+The 3D view draws a built-in succulent (a glazed bowl of echeveria rosettes) unless you upload your own model: **gear menu → Plants → Upload .glb** (operator only). It's saved as `models/succulent.glb` in the data folder, so updates keep it. Any GLB works: it's scaled to fit each pot's spot, base down. **Use built-in** removes it. For the [Succulent Bowl Planter by jerovdl](https://sketchfab.com/3d-models/succulent-bowl-planter-crafted-by-jerovdl-faa94790ebd3431ebff4648e9667d6a8) on Sketchfab, sign in, click **Download 3D Model**, and pick **GLB**. Check the license shown on the model page: most Sketchfab downloads are CC Attribution, which means crediting the author wherever the app is shown publicly. ZIPs and `.gltf` files are refused with a note on what to download instead. Files can be up to 60 MB.
+
 ### Marty's voice (ElevenLabs)
 
 With `ELEVENLABS_API_KEY` set, a **🔇 Voice** button appears in the map's top-right corner. Click it (it turns to **🔊 Voice**) and Marty reads his new chat lines out loud: replies, arrivals and his musings when it's quiet. Lines already in the chat aren't read back; each Marty message gets a small 🔈 button to hear it on demand. Voice is per viewer and off until they turn it on (browsers only allow sound after a click). If the browser still holds the sound back after a reload, the button pulses **Tap to hear**.
@@ -274,6 +280,7 @@ src/
   data/baseball/      generated knowledge file + its license/attribution note
   app/api/live/stream GET: Server-Sent Events (snapshot, chat, telemetry, trip, game)
   app/api/live/chat   POST { handle, text }: queue a viewer message
+  app/api/decor       GET: is a plant model uploaded? /api/decor/model GET the .glb, PUT/DELETE (operator) to replace/remove it
   app/api/live/speech/<id> GET: one of Marty's lines as audio (ElevenLabs, cached)
   app/api/live/operator POST { action, key? }: stop, resume, dock, reset, place, rotate, speed, battery
   app/api/cards       GET: card artwork for the room (CardSight link + image URLs); /api/cards/<id>/image proxies the front

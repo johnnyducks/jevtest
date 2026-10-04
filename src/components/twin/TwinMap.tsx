@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { Bonus } from "@/lib/game/game";
 import type { PublicTrip } from "@/lib/live/types";
-import { type Card, DIMENSIONS, type Environment, type Pose, type Ramp, type Vec } from "@/lib/twin/environment";
+import { type Card, type Decor, DIMENSIONS, type Environment, type Pose, type Ramp, type Vec } from "@/lib/twin/environment";
 import type { ViewTransform } from "@/lib/twin/geometry";
 import { blockReason, type Grid } from "@/lib/twin/grid";
 import type { MotionStatus } from "@/lib/twin/motion";
@@ -14,6 +14,8 @@ interface Props {
   env: Environment;
   grid: Grid;
   ramps: Ramp[];
+  /** Potted succulents (decoration), all floors; this floor's are drawn. */
+  decor?: Decor[];
   /** Marty's floor and continuous height in floors (fractional on a ramp); he's drawn when on or next to this floor. */
   martyFloor: number;
   martyLevel: number;
@@ -38,7 +40,7 @@ interface Props {
 
 const IN = 0.0254;
 
-export default function TwinMap({ env, grid, ramps, martyFloor, martyLevel, units, view, pose, status: motionStatus, trip, bonuses, cardPoints, showClearance, onPlace, onCardGo, onCardHover, onCardInspect }: Props) {
+export default function TwinMap({ env, grid, ramps, decor = [], martyFloor, martyLevel, units, view, pose, status: motionStatus, trip, bonuses, cardPoints, showClearance, onPlace, onCardGo, onCardHover, onCardInspect }: Props) {
   const level = env.level;
   const here = martyFloor === level || Math.abs(martyLevel - level) < 0.999;
   const fmt = (n: number) => formatShort(n, units);
@@ -186,7 +188,7 @@ export default function TwinMap({ env, grid, ramps, martyFloor, martyLevel, unit
         })}
 
       {env.obstacles.map((o) => {
-        if (o.kind === "ramp" || o.kind === "opening") return null;
+        if (o.kind === "ramp" || o.kind === "opening" || o.kind === "planter") return null;
         const p = S({ x: o.x, y: o.y + o.h });
         const c = S({ x: o.x + o.w / 2, y: o.y + o.h / 2 });
         const vertical = o.h > o.w * 3;
@@ -208,6 +210,24 @@ export default function TwinMap({ env, grid, ramps, martyFloor, martyLevel, unit
           </g>
         );
       })}
+      {/* Succulents: on furniture, or in floor pots Marty drives around */}
+      {decor
+        .filter((d) => d.floor === env.level)
+        .map((d) => {
+          const c = S(d);
+          const r = L(d.size / 2);
+          return (
+            <g key={d.id} className="decor-plant" transform={`translate(${c.x} ${c.y}) rotate(${(-d.spin * 180) / Math.PI})`}>
+              <title>Succulent</title>
+              <circle r={r} className="pot" />
+              {[0, 1, 2, 3, 4].map((i) => (
+                <ellipse key={i} cx={r * 0.38} rx={r * 0.42} ry={r * 0.2} transform={`rotate(${i * 72})`} className="leaf" />
+              ))}
+              <circle r={r * 0.22} className="heart" />
+            </g>
+          );
+        })}
+
       {(() => {
         // Label the cage enclosure (cage walls plus the room corner they close off).
         const cages = env.obstacles.filter((o) => o.kind === "cage");

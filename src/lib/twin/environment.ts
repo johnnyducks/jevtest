@@ -21,7 +21,7 @@ export interface Obstacle {
   id: string;
   label: string;
   /** ramp: the inclined lane up to the next floor. opening: the hole where the ramp from below arrives. */
-  kind: "wall" | "shelf" | "table" | "plinth" | "equipment" | "cage" | "ramp" | "opening";
+  kind: "wall" | "shelf" | "table" | "plinth" | "equipment" | "cage" | "ramp" | "opening" | "planter";
   /** Axis-aligned rectangle: bottom-left corner plus size, in meters. */
   x: number;
   y: number;
@@ -96,6 +96,22 @@ export interface Ramp {
   exit: Vec;
 }
 
+/**
+ * A potted succulent: decoration only. On furniture it sits on the top; on the
+ * floor it becomes a small obstacle (kind "planter") that Marty drives around.
+ */
+export interface Decor {
+  id: string;
+  floor: number;
+  /** Centre of the pot, meters. */
+  x: number;
+  y: number;
+  /** Pot diameter, meters. */
+  size: number;
+  /** Turn about its own axis, radians (so the plants don't all look identical). */
+  spin: number;
+}
+
 export interface FloorDef {
   level: number;
   name: string;
@@ -147,6 +163,8 @@ export interface Building {
   ramps: Ramp[];
   /** Every card in the building. */
   cards: Card[];
+  /** Succulents dotted around the floors (decoration). */
+  decor?: Decor[];
   defaultPose: Pose;
   defaultFloor: number;
 }
@@ -357,6 +375,19 @@ const FLOORS: FloorDef[] = [
   },
 ];
 
+/** Succulents: small bowls on furniture next to cards, bigger pots in floor corners by the wall cards. */
+const DECOR: Decor[] = [
+  { id: "plant-f1-desk", floor: 1, x: 0.93, y: 0.6, size: 2.25 * IN, spin: 0.4 },
+  { id: "plant-f1-ne", floor: 1, x: W - 1.75 * IN, y: D - 1.75 * IN, size: 3 * IN, spin: 1.9 },
+  { id: "plant-f2-case", floor: 2, x: 0.61, y: 0.6, size: 2 * IN, spin: 2.6 },
+  { id: "plant-f2-se", floor: 2, x: W - 1.75 * IN, y: 1.75 * IN, size: 3 * IN, spin: 0.9 },
+  { id: "plant-f3-shelf", floor: 3, x: 2.36, y: 0.6, size: 2.25 * IN, spin: 4.1 },
+  { id: "plant-f4-nw", floor: 4, x: 1.75 * IN, y: D - 1.75 * IN, size: 3 * IN, spin: 3.3 },
+  { id: "plant-f5-gallery", floor: 5, x: 1.7, y: 0.61, size: 2 * IN, spin: 5.2 },
+  { id: "plant-f5-ne", floor: 5, x: W - 1.75 * IN, y: D - 1.75 * IN, size: 3 * IN, spin: 2.2 },
+  { id: "plant-f6-pedestal", floor: 6, x: 1.15, y: 0.6, size: 2 * IN, spin: 1.2 },
+];
+
 const P = (lahmanId: string, wikipediaTitle: string): CardPlayer => ({ lahmanId, wikipediaTitle });
 const topps = (year: number) => ({ manufacturer: "Topps", set: `${year} Topps` });
 
@@ -420,6 +451,7 @@ export const BUILDING: Building = {
   floors: FLOORS,
   ramps: RAMPS,
   cards: [...CARDS],
+  decor: DECOR,
   defaultPose: { x: 0.3, y: 0.5, heading: 0 },
   defaultFloor: 1,
 };
@@ -448,6 +480,20 @@ export function clearFloorCache(b?: Building) {
 /** The built-in cards, as shipped (the catalog's "reset to defaults"). */
 export const DEFAULT_CARDS: readonly Card[] = CARDS.map((c) => ({ ...c, aliases: [...c.aliases], meta: { ...c.meta }, player: { ...c.player } }));
 
+const inside = (o: Obstacle, p: Vec) => p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
+
+/** The furniture a plant stands on, or undefined when it stands on the floor. */
+export function decorHost(f: FloorDef, d: Decor): Obstacle | undefined {
+  return f.obstacles.find((o) => o.kind !== "planter" && inside(o, d));
+}
+
+/** Floor-standing plants, as obstacles Marty steers around. */
+export function planterObstacles(b: Building, f: FloorDef): Obstacle[] {
+  return (b.decor ?? [])
+    .filter((d) => d.floor === f.level && !decorHost(f, d))
+    .map((d) => ({ id: d.id, label: "Succulent", kind: "planter" as const, x: d.x - d.size / 2, y: d.y - d.size / 2, w: d.size, h: d.size }));
+}
+
 /** One floor of the building, as an Environment for the grid, planner and map. */
 export function floorEnv(b: Building, level: number): Environment {
   let byLevel = floorCache.get(b);
@@ -464,7 +510,7 @@ export function floorEnv(b: Building, level: number): Environment {
     robotRadius: b.robotRadius,
     clearance: b.clearance,
     resolution: b.resolution,
-    obstacles: [...f.obstacles, ...rampObstacles(b, level)],
+    obstacles: [...f.obstacles, ...planterObstacles(b, f), ...rampObstacles(b, level)],
     cards: b.cards.filter((c) => c.floor === level),
     dock: f.dock,
     defaultPose: b.defaultPose,

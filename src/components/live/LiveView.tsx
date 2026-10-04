@@ -18,6 +18,7 @@ import TwinMap from "../twin/TwinMap";
 import LiveChat from "./LiveChat";
 import { useLive, useSmoothPose, useStored } from "./useLive";
 import { useMartyVoice } from "./useMartyVoice";
+import PlantModel from "./PlantModel";
 
 // The 3D views load only when someone opens them, so the 2D map stays as light as before.
 const Room3D = dynamic(() => import("../three/Room3D"), {
@@ -222,6 +223,7 @@ export default function LiveView({ keyRequired, speechAvailable = false }: { key
             env={floorEnv(BUILDING, viewFloor)}
             grid={GRIDS.get(viewFloor)!}
             ramps={BUILDING.ramps}
+            decor={BUILDING.decor}
             martyFloor={tel.floor}
             martyLevel={tel.level}
             units={units}
@@ -413,6 +415,7 @@ export default function LiveView({ keyRequired, speechAvailable = false }: { key
                   Check card images
                 </button>
               </div>
+              <PlantModel opKey={opKey} canOperate={canOperate} onNotice={setNotice} />
               {!canOperate && <p className="pop-warn">Enter the operator key to use these controls.</p>}
             </Popover>
           </div>

@@ -35,6 +35,7 @@ export const HEIGHTS: Record<Obstacle["kind"], number> & { roomWall: number } = 
   cage: 0.25,
   ramp: 0,
   opening: 0,
+  planter: 0.06,
   roomWall: DIMENSIONS.floorHeight - DIMENSIONS.slab,
 };
 
