@@ -45,6 +45,8 @@ export interface CardMeta {
   teamShown: string;
   seasonRepresented: number | null;
   identification: "catalog";
+  /** Printed card number ("311", "98T", "US175"); null when the card has none or it isn't known. */
+  number: string | null;
 }
 
 export interface Card {
@@ -65,6 +67,8 @@ export interface Card {
   approach: Vec;
   /** Base points for visiting this card (game layer). */
   points: number;
+  /** CardSight AI card UUID, when pinned by hand (skips the search). */
+  cardsightId?: string;
   player: CardPlayer;
   meta: CardMeta;
   note?: string;
@@ -185,6 +189,43 @@ const CARD_POINTS: Record<string, number> = {
   "bobby-bonds-69": 15,
 };
 
+/** Printed card numbers: the well-known base-set numbers for these issues (T206 cards are unnumbered). */
+const CARD_NUMBERS: Record<string, string> = {
+  "griffey-89": "1",
+  "henderson-80": "482",
+  "bobby-bonds-69": "630",
+  "barry-bonds-87": "320",
+  "ripken-82": "98T",
+  "aaron-54": "128",
+  "robinson-52": "312",
+  "ichiro-01": "726",
+  "mantle-52": "311",
+  "rose-63": "537",
+  "ohtani-18": "US1",
+  "jeter-93": "279",
+  "trout-11": "US175",
+  "pujols-01": "340",
+  "gwynn-83": "482",
+  "mattingly-84": "248",
+  "mcgwire-85": "401",
+  "thomas-90": "300",
+  "schmidt-73": "615",
+  "brett-75": "228",
+  "ozzie-79": "116",
+  "jackson-69": "260",
+  "maris-58": "47",
+  "ryan-68": "177",
+  "bench-68": "247",
+  "koufax-55": "123",
+  "mays-52": "261",
+  "banks-54": "94",
+  "williams-54": "1",
+  "clemente-55": "164",
+  "ruth-33": "53",
+  "gehrig-33": "92",
+  "dimaggio-41": "71",
+};
+
 const EAST = { x: 1, y: 0 };
 const WEST = { x: -1, y: 0 };
 const NORTH = { x: 0, y: 1 };
@@ -209,7 +250,7 @@ function card(
     name,
     player,
     points: CARD_POINTS[id] ?? 20,
-    meta: { ...meta, issueYear: year, teamShown: team, seasonRepresented: null, identification: "catalog" },
+    meta: { ...meta, issueYear: year, teamShown: team, seasonRepresented: null, identification: "catalog", number: CARD_NUMBERS[id] ?? null },
     aliases: [...new Set([name.toLowerCase(), ...aliases])],
     year,
     team,
@@ -378,7 +419,7 @@ export const BUILDING: Building = {
   resolution: 0.01,
   floors: FLOORS,
   ramps: RAMPS,
-  cards: CARDS,
+  cards: [...CARDS],
   defaultPose: { x: 0.3, y: 0.5, heading: 0 },
   defaultFloor: 1,
 };
@@ -397,6 +438,15 @@ export function rampObstacles(b: Building, level: number): Obstacle[] {
 }
 
 const floorCache = new Map<Building, Map<number, Environment>>();
+
+/** Forget cached floor views (after the card catalog changes). */
+export function clearFloorCache(b?: Building) {
+  if (b) floorCache.delete(b);
+  else floorCache.clear();
+}
+
+/** The built-in cards, as shipped (the catalog's "reset to defaults"). */
+export const DEFAULT_CARDS: readonly Card[] = CARDS.map((c) => ({ ...c, aliases: [...c.aliases], meta: { ...c.meta }, player: { ...c.player } }));
 
 /** One floor of the building, as an Environment for the grid, planner and map. */
 export function floorEnv(b: Building, level: number): Environment {

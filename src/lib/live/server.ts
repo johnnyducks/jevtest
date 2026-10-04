@@ -8,6 +8,7 @@
 import { getBaseballKnowledge } from "../baseball/server";
 import { evaluate, jevConfig } from "../jev/client";
 import { batteryWithCapacity, DEFAULT_CAPACITY } from "../twin/battery";
+import { ensureCatalog, onCatalogChange } from "../catalog/server";
 import { BUILDING } from "../twin/environment";
 import { martySay } from "../voice/openai";
 import { LiveSession } from "./session";
@@ -18,6 +19,7 @@ const g = globalThis as unknown as { __martyLive?: { session: LiveSession; timer
 
 export function getLive(): LiveSession {
   if (g.__martyLive) return g.__martyLive.session;
+  ensureCatalog();
   const jev = jevConfig();
   const session = new LiveSession({
     building: BUILDING,
@@ -37,6 +39,7 @@ export function getLive(): LiveSession {
     }
   }, TICK_MS);
   timer.unref?.();
+  onCatalogChange(() => session.catalogChanged());
   g.__martyLive = { session, timer };
   return session;
 }

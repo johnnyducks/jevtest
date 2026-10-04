@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { applyCatalog } from "@/lib/catalog/catalog";
 import type { LiveSnapshot } from "@/lib/live/types";
 import { HANDLE } from "@/lib/live/types";
 import { BUILDING, type Card, floorEnv, floorName } from "@/lib/twin/environment";
@@ -11,6 +12,7 @@ import { formatLength, formatShort, type Units } from "@/lib/units";
 import { Gear, Help, Send } from "../icons";
 import { CardHover, CardModal, useCardArt } from "../cards/CardArt";
 import CardCheck from "../cards/CardCheck";
+import CatalogPanel from "../cards/CatalogPanel";
 import Popover from "../Popover";
 import TwinMap from "../twin/TwinMap";
 import LiveChat from "./LiveChat";
@@ -127,6 +129,12 @@ function Scoreboard({ snap, me }: { snap: LiveSnapshot; me: string }) {
 
 export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   const { snap, connected } = useLive();
+  // Every viewer draws the server's catalog: apply it whenever it changes (an admin edit, or a reconnect).
+  const catalogKey = snap ? `${snap.epoch}:${snap.catalogVersion}` : "";
+  useMemo(() => {
+    if (snap?.catalog?.length) applyCatalog(BUILDING, snap.catalog);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogKey]);
   const pose = useSmoothPose(snap?.telemetry.pose);
   const [handle, setHandle] = useStored("marty.handle");
   const [opKey, setOpKey] = useStored("marty.operatorKey");
@@ -142,8 +150,9 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
   const [notice, setNotice] = useState<{ kind: "info" | "warn"; text: string } | null>(null);
   const [showClearance, setShowClearance] = useState(true);
   const [sending, setSending] = useState(false);
-  const [art, reloadArt] = useCardArt();
+  const [art, reloadArt] = useCardArt(catalogKey);
   const [checking, setChecking] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [hoverCard, setHoverCard] = useState<{ card: Card; at: { x: number; y: number } } | null>(null);
   const [openCard, setOpenCard] = useState<Card | null>(null);
 
@@ -205,6 +214,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
         <div className={`map-frame${view === "2d" ? "" : " is-3d"}`}>
           {view === "2d" ? (
           <TwinMap
+            key={catalogKey}
             env={floorEnv(BUILDING, viewFloor)}
             grid={GRIDS.get(viewFloor)!}
             ramps={BUILDING.ramps}
@@ -225,6 +235,7 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
           />
           ) : (
             <Room3D
+              key={catalogKey}
               building={BUILDING}
               floor={tel.floor}
               level={tel.level}
@@ -285,6 +296,9 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
             <span className="viewers mono" title="People watching right now">
               <span className={`dot ${connected ? "on" : ""}`} /> {snap.viewers} watching
             </span>
+            <button className="corner-btn mono" onClick={() => setCatalogOpen(true)} title="Card catalog: every card, where it is, and its CardSight status">
+              Cards
+            </button>
             <Popover label="Help" align="right" trigger={<Help width={16} height={16} />}>
               <div className="pop-title">How it works</div>
               <ul className="pop-list">
@@ -478,6 +492,22 @@ export default function LiveView({ keyRequired }: { keyRequired: boolean }) {
         />
       )}
       {checking && <CardCheck opKey={opKey} onClose={() => setChecking(false)} onDone={reloadArt} />}
+      {catalogOpen && (
+        <CatalogPanel
+          opKey={opKey}
+          keyRequired={keyRequired}
+          units={units}
+          onClose={() => {
+            setCatalogOpen(false);
+            reloadArt();
+          }}
+          onGo={(name) => {
+            setCatalogOpen(false);
+            if (handle) void send(`Go to ${name}`);
+            else setDraft(`Go to ${name}`);
+          }}
+        />
+      )}
       {openCard && (
         <CardModal
           card={openCard}

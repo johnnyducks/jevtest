@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ENVIRONMENT } from "../../twin/environment.ts";
-import { LOOKUP, pickMatch, type SearchHit } from "../match.ts";
+import { hintFor, pickMatch, type SearchHit } from "../match.ts";
+
+const LOOKUP = Object.fromEntries(ENVIRONMENT.cards.map((c) => [c.id, hintFor(c)]));
 
 const hit = (o: Partial<SearchHit>): SearchHit => ({ type: "card", id: "x", name: "Mickey Mantle", year: "1952", releaseName: "1952 Topps", setName: "Base", cardNumber: "311", relevance: 1, ...o });
 
 test("every card in the room has a lookup hint", () => {
-  for (const c of ENVIRONMENT.cards) assert.ok(LOOKUP[c.id], c.id);
+  for (const c of ENVIRONMENT.cards) {
+    const h = LOOKUP[c.id];
+    assert.ok(h.query.includes(c.name), c.id);
+    if (c.id !== "wagner-t206" && c.id !== "cobb-t206") assert.ok(h.number, `${c.id} has a card number`);
+  }
 });
 
 test("exact match: name, year, release and card number agree", () => {
@@ -69,4 +75,29 @@ test("rejection reasons are specific, for the 'Check card images' screen", async
   assert.ok(plans.length >= 3);
   assert.equal(plans[0].segment, "Baseball");
   assert.equal(new Set(plans.map((p) => JSON.stringify(p))).size, plans.length);
+});
+
+test("hints come from the catalog fields: name, year, set, number", () => {
+  const card = (o: { name: string; year: number; set: string | null; manufacturer?: string | null; number?: string | null }) => ({
+    name: o.name,
+    year: o.year,
+    meta: { manufacturer: o.manufacturer ?? null, set: o.set, number: o.number ?? null },
+  });
+  assert.deepEqual(hintFor(card({ name: "Cal Ripken Jr.", year: 1982, set: "1982 Topps Traded", number: "98T" })), {
+    query: "1982 Topps Traded Cal Ripken Jr.",
+    nameWords: ["cal", "ripken"],
+    years: [1982, 1982],
+    release: ["topps", "traded"],
+    number: "98T",
+  });
+  assert.deepEqual(hintFor(card({ name: "Honus Wagner", year: 1909, set: "T206" })).years, [1909, 1911], "T206 spans 1909–11");
+  assert.equal(hintFor(card({ name: "Ken Griffey Jr.", year: 1989, set: null, manufacturer: "Upper Deck" })).query, "1989 Upper Deck Ken Griffey Jr.");
+  assert.equal(hintFor({ ...card({ name: "X", year: 2000, set: "2000 Topps" }), cardsightId: "abc" }).id, "abc", "a pinned ID skips the search");
+});
+
+test("a one-name catalog entry (\"Ichiro\") matches the card's player", () => {
+  const h = LOOKUP["ichiro-01"];
+  assert.equal(pickMatch(h, [hit({ name: "Ichiro", year: "2001", releaseName: "2001 Topps", cardNumber: "726" })])?.confidence, "exact");
+  assert.equal(pickMatch(h, [hit({ name: "Suzuki", year: "2001", releaseName: "2001 Topps", cardNumber: "726" })])?.confidence, "exact");
+  assert.equal(pickMatch(h, [hit({ name: "Mike", year: "2001", releaseName: "2001 Topps", cardNumber: "726" })]), null);
 });

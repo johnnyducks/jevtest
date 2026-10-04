@@ -23,6 +23,7 @@ Requires Node 20.9+. A Jev API key is required. Without one, Marty answers that 
 | `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's lines |
 | `CARDSIGHT_API_KEY` | no | — | Real card images from [CardSight AI](https://cardsight.ai) (`CARDSIGHTAI_API_KEY` also accepted; `CARDSIGHT_API_BASE` overrides the URL) |
 | `BATTERY_CAPACITY` | no | `100` | How many times bigger Marty's battery is than the baseline. Higher = Marty drives farther and declines fewer trips; `1` = the baseline (a full charge drives ~118 ft) |
+| `MARTY_DATA_DIR` | no | `~/.marty-live` | Where your card catalog edits and CardSight matches are saved (outside the app folder, so updates don't lose them) |
 | `OPERATOR_KEY` | no | — | Locks the gear-menu controls (stop, resume, dock, reset, placement, speed, battery) behind a key. Without it, anyone who opens the page can use them |
 | `WIKIPEDIA_ENABLED` | no | `true` | Set to `false` to use Lahman data only |
 | `WIKIPEDIA_USER_AGENT` | no | `MartyLive/0.1 (…)` | User-Agent sent to the Wikipedia API (Wikimedia asks for contact details) |
@@ -114,13 +115,29 @@ The gear icon on the map has Stop, Resume (finishes the remaining stops), Dock, 
 
 The text model never decides anything. It phrases what Jev and the rules already decided, and its prompt forbids inventing reasons, numbers or points. Built-in lines are tagged **built-in** in the chat.
 
+### Card catalog
+
+**Cards** (top-right of the map) opens the catalog: every card, with its thumbnail, name, year, team, manufacturer, set, card number, floor, position, which way it faces, points and **CardSight status**. Anyone can look. Filter by text or floor; **go** sends Marty there.
+
+At the top, one line says whether CardSight is working: no key set, key rejected, can't reach CardSight, or "connected, N of M cards matched". Each row shows that card's own status: matched (exact), likely, not found or error, plus the catalog card it was matched to. **check** looks that card up again and shows what was searched, what came back and why each result was accepted or rejected. **Check all with CardSight** does every card.
+
+As the operator, enter the operator key in the gear menu if one is set, then:
+- **Edit** turns the table into a form.
+- **Add card** adds a row. New cards get an ID from the name and year ("piazza-92"), and a Lahman ID from the name when it's unambiguous, so Marty has stats. **more** shows other names viewers can use, the Lahman and Wikipedia IDs, a CardSight ID to pin the exact card, and a note.
+- **✕** removes a card.
+- **Save** checks everything first. Duplicate IDs, impossible years, unknown floors and positions off the floor are refused, with the reason on the row. A card Marty can't reach (blocked, or behind the vault bars) is saved with a warning.
+- Saved changes reach everyone watching immediately (map, 3D, game, chat), and CardSight looks up any card whose name, year, set, manufacturer or number changed.
+- **Built-in cards** goes back to the 35 that ship with the app.
+
+Positions are measured from the floor's west wall and south wall, in inches or centimeters (the **in / cm** toggle); "faces" is the side Marty looks at it from. Edits are saved to `catalog.json` in the data folder (`~/.marty-live` unless `MARTY_DATA_DIR` says otherwise), so they survive updating the app. Delete that file to go back to the built-in cards.
+
 ### Real card images (CardSight AI)
 
 With `CARDSIGHT_API_KEY` set, each card in the room is linked to the real card in the [CardSight AI](https://cardsight.ai) catalog, and its front image is shown:
 - **2D:** hover a card for a preview with its details; click still sends Marty. On a phone, tapping a card opens it full size, with a **Send Marty** button.
 - **3D / FPV:** the real image replaces the drawn placeholder on the wall, at the card's real proportions.
 
-**How cards are matched** (`lib/cardsight/match.ts`): each card has a search hint with player, year, release and the printed card number, e.g. 1952 Topps #311 for Mantle and 1982 Topps Traded #98T for Ripken. The app searches the catalog and accepts a result only if the name, year and release agree. A matching card number makes it an **exact** match; without a number to check, as with the T206 Wagner, it's labelled a **likely** match. If nothing certain turns up, the card keeps its placeholder and shows "No certain match": the app never guesses. To pin a specific catalog card, put its CardSight UUID in that card's hint as `id`.
+**How cards are matched** (`lib/cardsight/match.ts`): each card's search comes from its catalog fields: player, year, set and printed card number, e.g. 1952 Topps #311 for Mantle and 1982 Topps Traded #98T for Ripken. The app searches the catalog and accepts a result only if the name, year and release agree. A matching card number makes it an **exact** match; without a number to check, as with the T206 Wagner, it's labelled a **likely** match. If nothing certain turns up, the card keeps its placeholder and shows "No certain match": the app never guesses. To pin a specific catalog card, put its CardSight ID in the card's row in the catalog (**more** → CardSight ID).
 
 **If you only see placeholders**, open the gear menu on the map and click **Check card images**. It looks every card up again and shows, per card, what happened:
 - whether the key is set, and whether CardSight accepted it;
@@ -130,7 +147,7 @@ With `CARDSIGHT_API_KEY` set, each card in the room is linked to the real card i
 
 Only the operator can run it, because it spends CardSight lookups. The server's Terminal window also logs one line per card. Stray spaces or quotes around the key in `.env.local` are ignored. Each card tries several searches, most specific first, and reads the year from the release name when the year field is missing.
 
-The search runs once per card. Results are saved to `data/cardsight/matches.json`; delete that file to search again. Images are fetched by the server, cached in `.cache/cardsight/`, and served from `/api/cards/<card id>/image`, so the key never reaches the browser. The image route only serves the room's own cards, so the app can't be used to pull arbitrary images on your key.
+The search runs once per card (and again when you edit the card). Results are saved to `cardsight-matches.json` in the data folder; delete that file to search everything again. Images are fetched by the server, cached in `.cache/cardsight/`, and served from `/api/cards/<card id>/image`, so the key never reaches the browser. The image route only serves the room's own cards, so the app can't be used to pull arbitrary images on your key.
 
 **Card backs:** CardSight provides one image per card, the front. To show a back, or to replace a front, drop your own image in `public/cards/`, e.g. `mantle-52-back.jpg` (see `public/cards/README.md`). The 2D card view then shows both sides, with a flip button on phones.
 

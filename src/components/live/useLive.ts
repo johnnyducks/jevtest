@@ -18,6 +18,8 @@ function reduce(s: State, e: LiveEvent | { type: "connected"; value: boolean }):
       return { ...s, snap: { ...snap, trip: e.trip } };
     case "game":
       return { ...s, snap: { ...snap, game: e.game } };
+    case "catalog":
+      return { ...s, snap: { ...snap, catalog: e.catalog, catalogVersion: e.catalogVersion } };
     case "status":
       return { ...s, snap: { ...snap, viewers: e.viewers, deciding: e.deciding, queue: e.queue } };
     case "chat": {

@@ -11,7 +11,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { ENVIRONMENT } from "../twin/environment";
 import { CardSightError, cardsightConfig, getCard, getCardImage, searchCards } from "./client";
-import { LOOKUP, MATCHER_VERSION, pickMatch, rejectReason, type SearchHit, searchPlan } from "./match";
+import { identityOf } from "../catalog/catalog";
+import { ensureCatalog } from "../catalog/server";
+import { dataFile } from "../datadir";
+import { hintFor, type LookupHint, MATCHER_VERSION, pickMatch, rejectReason, type SearchHit, searchPlan } from "./match";
 import type { CardArt, CardArtBody } from "./types";
 
 interface StoredMatch {
@@ -22,6 +25,8 @@ interface StoredMatch {
   matchedAt: string;
   /** Matching rules version that produced this entry. */
   version?: number;
+  /** The card's identifying fields when it was matched; an edit in the catalog triggers a new lookup. */
+  identity?: string;
 }
 
 /** What happened for one card, for the "Check card images" screen. */
@@ -35,7 +40,7 @@ export interface CardDiagnosis {
   image?: { ok: boolean; detail: string };
 }
 
-const MATCHES = () => path.join(process.cwd(), "data", "cardsight", "matches.json");
+const MATCHES = () => dataFile("cardsight-matches.json");
 const IMAGE_DIR = () => path.join(process.cwd(), ".cache", "cardsight");
 const LOCAL_DIR = () => path.join(process.cwd(), "public", "cards");
 const EXTS = ["jpg", "jpeg", "png", "webp"];
@@ -86,7 +91,8 @@ interface Attempt {
 
 async function resolve(cardId: string): Promise<Attempt> {
   const now = () => new Date().toISOString();
-  const hint = LOOKUP[cardId];
+  const card = ENVIRONMENT.cards.find((c) => c.id === cardId);
+  const hint = card ? hintFor(card) : undefined;
   if (!hint) return { match: { status: "not_found", matchedAt: now(), reasons: ["no lookup hint for this card"], version: MATCHER_VERSION }, searches: [], hits: [] };
   if (hint.id) {
     const d = await getCard(hint.id);
@@ -165,11 +171,18 @@ function toArt(cardId: string, s: StoredMatch | undefined, note?: string): CardA
   };
 }
 
+const cardIdentity = (cardId: string) => {
+  const c = ENVIRONMENT.cards.find((x) => x.id === cardId);
+  return c ? identityOf({ name: c.name, year: c.year, set: c.meta.set, manufacturer: c.meta.manufacturer, number: c.meta.number, cardsightId: c.cardsightId }) : "";
+};
+
 async function artFor(cardId: string): Promise<CardArt> {
   const st = state();
   const stored = st.stored[cardId];
+  // A saved result only counts if the card hasn't been edited since (same name, year, set, number…).
+  const same = stored?.identity === cardIdentity(cardId);
   const fresh =
-    stored && (stored.status === "matched" || (stored.version === MATCHER_VERSION && Date.now() - Date.parse(stored.matchedAt) < RETRY_NOT_FOUND_MS));
+    stored && same && (stored.status === "matched" || (stored.version === MATCHER_VERSION && Date.now() - Date.parse(stored.matchedAt) < RETRY_NOT_FOUND_MS));
   if (fresh || !cardsightConfig().configured) return toArt(cardId, stored);
   const err = st.errors.get(cardId);
   if (err && Date.now() - err.at < RETRY_ERROR_MS) return toArt(cardId, stored, err.note);
@@ -177,7 +190,7 @@ async function artFor(cardId: string): Promise<CardArt> {
   if (!p) {
     p = resolve(cardId)
       .then(({ match: m }) => {
-        st.stored[cardId] = m;
+        st.stored[cardId] = { ...m, identity: cardIdentity(cardId) };
         st.errors.delete(cardId);
         save();
         return toArt(cardId, m);
@@ -196,6 +209,7 @@ async function artFor(cardId: string): Promise<CardArt> {
 
 /** Artwork for every card in the room. Looks cards up a few at a time (gentle on the API). */
 export async function allCardArt(): Promise<CardArtBody> {
+  ensureCatalog();
   const cards: Record<string, CardArt> = {};
   const ids = ENVIRONMENT.cards.map((c) => c.id);
   for (let i = 0; i < ids.length; i += 3) {
@@ -207,6 +221,7 @@ export async function allCardArt(): Promise<CardArtBody> {
 
 /** Front image bytes for one of the room's cards (by our card id, never an arbitrary catalog id). */
 export async function frontImage(cardId: string): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
+  ensureCatalog();
   if (!ENVIRONMENT.cards.some((c) => c.id === cardId)) return null;
   const art = await artFor(cardId);
   const uuid = art.cardsight?.id;
@@ -243,10 +258,52 @@ function errorNote(e: unknown): string {
   return e.message;
 }
 
-const tierOf = (hint: (typeof LOOKUP)[string], h: SearchHit) => {
+const tierOf = (hint: LookupHint, h: SearchHit) => {
   const words = hint.nameWords.filter((w) => ` ${h.name.toLowerCase()} `.includes(w)).length;
   return words * 10 + (rejectReason(hint, h) === null ? 100 : 0);
 };
+
+/** Look one card up again (ignoring saved results) and explain what CardSight returned. */
+async function diagnose(card: (typeof ENVIRONMENT.cards)[number]): Promise<CardDiagnosis> {
+  const cfg = cardsightConfig();
+  const st = state();
+  const hint = hintFor(card);
+  const d: CardDiagnosis = { cardId: card.id, name: card.name, outcome: "", searches: [], candidates: [] };
+  if (!cfg.configured) {
+    d.outcome = "CARDSIGHT_API_KEY is not set on the server.";
+    return d;
+  }
+  try {
+    const r = await resolve(card.id);
+    d.searches = r.searches;
+    const m = r.match;
+    d.outcome = m.status === "matched" ? `Matched (${m.confidence}): ${m.cardsight?.name}, ${m.cardsight?.releaseName ?? m.cardsight?.year ?? ""} #${m.cardsight?.number ?? "?"}` : "No certain match.";
+    d.candidates = [...r.hits]
+      .sort((a, b) => tierOf(hint, b) - tierOf(hint, a))
+      .slice(0, 8)
+      .map((h) => ({
+        name: h.name,
+        year: h.year,
+        release: h.releaseName,
+        set: h.setName,
+        number: h.cardNumber,
+        verdict: h.id === m.cardsight?.id ? "chosen" : (rejectReason(hint, h) ?? (hint.number && h.cardNumber ? `card #${h.cardNumber}, wanted #${hint.number}` : "acceptable")),
+      }));
+    st.stored[card.id] = { ...m, identity: cardIdentity(card.id) };
+    st.errors.delete(card.id);
+    if (m.status === "matched") {
+      try {
+        const img = await frontImage(card.id);
+        d.image = img ? { ok: true, detail: `${img.contentType}, ${Math.round(img.bytes.byteLength / 1024)} KB` } : { ok: false, detail: "CardSight has no image for this card" };
+      } catch (e) {
+        d.image = { ok: false, detail: errorNote(e) };
+      }
+    }
+  } catch (e) {
+    d.outcome = errorNote(e);
+  }
+  return d;
+}
 
 /**
  * Look every card up again (ignoring saved results) and report what CardSight
@@ -254,50 +311,20 @@ const tierOf = (hint: (typeof LOOKUP)[string], h: SearchHit) => {
  * each matched card's image downloads. Saves any new matches.
  */
 export async function diagnoseAll(): Promise<{ configured: boolean; base: string; keyLength: number; cards: CardDiagnosis[] }> {
+  ensureCatalog();
   const cfg = cardsightConfig();
   const out: CardDiagnosis[] = [];
-  const st = state();
-  for (const card of ENVIRONMENT.cards) {
-    const hint = LOOKUP[card.id];
-    const d: CardDiagnosis = { cardId: card.id, name: card.name, outcome: "", searches: [], candidates: [] };
-    if (!cfg.configured) {
-      d.outcome = "CARDSIGHT_API_KEY is not set on the server.";
-      out.push(d);
-      continue;
-    }
-    try {
-      const r = await resolve(card.id);
-      d.searches = r.searches;
-      const m = r.match;
-      d.outcome = m.status === "matched" ? `Matched (${m.confidence}): ${m.cardsight?.name}, ${m.cardsight?.releaseName ?? m.cardsight?.year ?? ""} #${m.cardsight?.number ?? "?"}` : "No certain match.";
-      if (hint) {
-        d.candidates = [...r.hits]
-          .sort((a, b) => tierOf(hint, b) - tierOf(hint, a))
-          .slice(0, 8)
-          .map((h) => ({
-            name: h.name,
-            year: h.year,
-            release: h.releaseName,
-            set: h.setName,
-            number: h.cardNumber,
-            verdict: h.id === m.cardsight?.id ? "chosen" : (rejectReason(hint, h) ?? (hint.number && h.cardNumber ? `card #${h.cardNumber}, wanted #${hint.number}` : "acceptable")),
-          }));
-      }
-      st.stored[card.id] = m;
-      st.errors.delete(card.id);
-      if (m.status === "matched") {
-        try {
-          const img = await frontImage(card.id);
-          d.image = img ? { ok: true, detail: `${img.contentType}, ${Math.round(img.bytes.byteLength / 1024)} KB` } : { ok: false, detail: "CardSight has no image for this card" };
-        } catch (e) {
-          d.image = { ok: false, detail: errorNote(e) };
-        }
-      }
-    } catch (e) {
-      d.outcome = errorNote(e);
-    }
-    out.push(d);
-  }
+  for (const card of ENVIRONMENT.cards) out.push(await diagnose(card));
   save();
   return { configured: cfg.configured, base: cfg.base, keyLength: cfg.apiKey.length, cards: out };
+}
+
+/** Look one card up again (for the catalog's per-row "check" button). */
+export async function diagnoseOne(cardId: string): Promise<CardDiagnosis | null> {
+  ensureCatalog();
+  const card = ENVIRONMENT.cards.find((c) => c.id === cardId);
+  if (!card) return null;
+  const d = await diagnose(card);
+  save();
+  return d;
 }

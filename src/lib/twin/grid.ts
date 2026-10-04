@@ -117,3 +117,30 @@ export function blockersAlong(env: Environment, g: Grid, a: Vec, b: Vec): string
 export function firstBlocker(env: Environment, g: Grid, a: Vec, b: Vec): string | null {
   return blockersAlong(env, g, a, b)[0] ?? null;
 }
+
+/** True when `to` is in the same connected free region as `from`. */
+export function connected(g: Grid, from: Vec, to: Vec): boolean {
+  const cell = (p: Vec) => ({ c: Math.floor(p.x / g.resolution), r: Math.floor(p.y / g.resolution) });
+  const a = cell(from);
+  const z = cell(to);
+  const seen = new Uint8Array(g.cols * g.rows);
+  const free = (c: number, r: number) => c >= 0 && r >= 0 && c < g.cols && r < g.rows && !g.blocked[r * g.cols + c];
+  if (!free(a.c, a.r) || !free(z.c, z.r)) return false;
+  const q = [a.r * g.cols + a.c];
+  seen[q[0]] = 1;
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h];
+    if (i === z.r * g.cols + z.c) return true;
+    const c = i % g.cols;
+    const r = (i - c) / g.cols;
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc;
+      const nr = r + dr;
+      if (free(nc, nr) && !seen[nr * g.cols + nc]) {
+        seen[nr * g.cols + nc] = 1;
+        q.push(nr * g.cols + nc);
+      }
+    }
+  }
+  return false;
+}

@@ -3,6 +3,7 @@
  * browser; contains no secrets.
  */
 import type { FactSource } from "../baseball/types.ts";
+import type { CatalogCard } from "../catalog/catalog.ts";
 import type { ConsideredOption, MessageIntent } from "../decision/batch.ts";
 import type { RuleResult } from "../decision/contracts.ts";
 import type { GameSnapshot } from "../game/game.ts";
@@ -104,6 +105,9 @@ export interface LiveSnapshot {
   viewers: number;
   deciding: boolean;
   queue: { handle: string; summary: string }[];
+  /** The card catalog (so every viewer's map shows the same cards), and a counter that changes on every edit. */
+  catalog: CatalogCard[];
+  catalogVersion: number;
 }
 
 export type LiveEvent =
@@ -112,6 +116,7 @@ export type LiveEvent =
   | { type: "chat"; item: ChatItem }
   | { type: "trip"; trip: PublicTrip | null }
   | { type: "game"; game: GameSnapshot }
+  | { type: "catalog"; catalog: CatalogCard[]; catalogVersion: number }
   | { type: "status"; viewers: number; deciding: boolean; queue: LiveSnapshot["queue"] };
 
 /** Handles: 2–20 letters, digits or underscores. */

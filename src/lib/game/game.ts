@@ -65,6 +65,7 @@ export interface GameSnapshot {
 export class Game {
   private cards: Card[];
   private reachable: Card[];
+  private canReach: (c: Card) => boolean;
   private config: GameConfig;
   private random: () => number;
   private bonuses: Bonus[] = [];
@@ -78,12 +79,20 @@ export class Game {
     this.cards = cards;
     this.config = { ...GAME, ...opts.config };
     this.random = rng(opts.seed ?? 7);
+    this.canReach = canReach;
     this.reachable = cards.filter(canReach);
     this.nextSpawnAt = opts.now + this.between(this.config.spawnEverySec) * 1000 * 0.5;
   }
 
   private between([lo, hi]: [number, number]) {
     return lo + this.random() * (hi - lo);
+  }
+
+  /** The card list changed (catalog edit): recompute which cards can hold bonuses, drop bonuses on removed cards. */
+  refresh() {
+    this.reachable = this.cards.filter(this.canReach);
+    const ids = new Set(this.cards.map((c) => c.id));
+    this.bonuses = this.bonuses.filter((b) => ids.has(b.cardId));
   }
 
   /** Advance time: expire old bonuses, spawn new ones. Returns what changed. */

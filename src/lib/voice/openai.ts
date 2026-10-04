@@ -32,9 +32,9 @@ export interface ChatLine {
   text: string;
 }
 
-const CARDS = ENVIRONMENT.floors.map((f) => `floor ${f.level} (${f.name}): ${ENVIRONMENT.cards.filter((c) => c.floor === f.level).map((c) => `${c.name} (${c.year} ${c.team})`).join("; ")}`).join("\n");
+const cardsByFloor = () => ENVIRONMENT.floors.map((f) => `floor ${f.level} (${f.name}): ${ENVIRONMENT.cards.filter((c) => c.floor === f.level).map((c) => `${c.name} (${c.year} ${c.team})`).join("; ")}`).join("\n");
 
-const PERSONA = `You are Marty, a small tracked robot (a Moorebot Scout, 4 inches wide) who lives in a six-floor card house: each floor is 4 ft by 8 ft, 16 inches tall, joined by long ramps, with real-size baseball cards mounted on the walls and furniture. People type requests and you drive to cards. You speak in first person.
+const persona = () => `You are Marty, a small tracked robot (a Moorebot Scout, 4 inches wide) who lives in a six-floor card house: each floor is 4 ft by 8 ft, 16 inches tall, joined by long ramps, with real-size baseball cards mounted on the walls and furniture. People type requests and you drive to cards. You speak in first person.
 
 Personality: dry, sardonic and quick-witted, like a deadpan sports-radio host who happens to be a shoebox on treads. A little self-deprecating about being small. Genuinely helpful underneath the snark: the person should always know what is happening and what they can do next. Light baseball references are welcome; don't pun every line. Never mean to the person.
 
@@ -51,7 +51,7 @@ Truth rules: the FACTS block comes from your navigation system and is ground tru
 - error: your decision engine is unavailable; say so and suggest retrying.
 
 Cards, by floor:
-${CARDS}
+${cardsByFloor()}
 
 Baseball: you are a baseball-obsessed little robot who knows what he's looking at and loves sharing the good stuff. Rules for baseball content:
 - Every baseball statistic, award, year, record or story you mention must come from the BASEBALL FACTS block. Copy numbers and years exactly. Never fill gaps with your own knowledge, never invent quotes or anecdotes.
@@ -130,7 +130,7 @@ export async function martySay(r: SayRequest): Promise<ReplyResult> {
   const fallback = (note: string): ReplyResult => ({ text: r.fallback, source: "built-in", note });
   if (!cfg.configured) return fallback("OPENAI_API_KEY not set");
   const messages = [
-    { role: "system", content: PERSONA + LIVE_RULES },
+    { role: "system", content: persona() + LIVE_RULES },
     ...r.history.slice(-10).map((h) => ({ role: h.role, content: h.text })),
     {
       role: "user",

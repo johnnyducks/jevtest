@@ -14,13 +14,14 @@
  * Jev, the text model and the knowledge service are injected.
  */
 import { CommentaryPolicy } from "../baseball/commentary.ts";
+import { toCatalogCard } from "../catalog/catalog.ts";
 import type { KnowledgeBundle, KnowledgeRequest } from "../baseball/service.ts";
 import { type BatchContext, type BatchDecision, decideBatch, type Evaluate, executable, type Proposal } from "../decision/batch.ts";
 import { Game, type GameConfig, type GameSnapshot } from "../game/game.ts";
 import { Battery, BATTERY, type BatteryConfig } from "../twin/battery.ts";
 import { type Building, floorEnv, floorName, type Vec } from "../twin/environment.ts";
 import { toDegrees } from "../twin/geometry.ts";
-import { blockReason, buildGrid, type Grid, isFreePoint } from "../twin/grid.ts";
+import { blockReason, buildGrid, connected, type Grid, isFreePoint } from "../twin/grid.ts";
 import { DEFAULT_PARAMS, type Scheduler, SimulatedMotion } from "../twin/motion.ts";
 import { type FloorPose, type ParsedRequest, parseRequest, planRoute, type RoutePlan, type StopRef } from "../twin/routes.ts";
 import { dist } from "../units.ts";
@@ -168,6 +169,7 @@ export class LiveSession {
   /** Last time anyone (viewer or Marty's own trip) did something; drives idle musings. */
   private lastActivity: number;
   private idleCount = 0;
+  private catalogVersion = 0;
   private idleTopics: string[] = [];
 
   constructor(deps: LiveDeps) {
@@ -248,7 +250,17 @@ export class LiveSession {
       viewers: this.viewers,
       deciding: this.deciding,
       queue: this.queueView(),
+      catalog: this.b.cards.map(toCatalogCard),
+      catalogVersion: this.catalogVersion,
     };
+  }
+
+  /** The card catalog was edited: refresh what depends on it and send it to every viewer. */
+  catalogChanged() {
+    this.catalogVersion++;
+    this.game.refresh();
+    this.emit({ type: "catalog", catalog: this.b.cards.map(toCatalogCard), catalogVersion: this.catalogVersion });
+    this.emitGame(true);
   }
 
   /** Resolves when every pending Jev / voice call has finished (for tests). */
@@ -945,33 +957,6 @@ export class LiveSession {
 
 function publicFacts(k: KnowledgeBundle | null | undefined) {
   return (k?.facts ?? []).map((f) => ({ id: f.id, kind: f.kind, playerId: f.subject.playerId, text: f.text, verification: f.verification, source: f.source }));
-}
-
-/** True when `to` is in the same connected free region as `from`. */
-function connected(g: Grid, from: Vec, to: Vec): boolean {
-  const cell = (p: Vec) => ({ c: Math.floor(p.x / g.resolution), r: Math.floor(p.y / g.resolution) });
-  const a = cell(from);
-  const z = cell(to);
-  const seen = new Uint8Array(g.cols * g.rows);
-  const free = (c: number, r: number) => c >= 0 && r >= 0 && c < g.cols && r < g.rows && !g.blocked[r * g.cols + c];
-  if (!free(a.c, a.r) || !free(z.c, z.r)) return false;
-  const q = [a.r * g.cols + a.c];
-  seen[q[0]] = 1;
-  for (let h = 0; h < q.length; h++) {
-    const i = q[h];
-    if (i === z.r * g.cols + z.c) return true;
-    const c = i % g.cols;
-    const r = (i - c) / g.cols;
-    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nc = c + dc;
-      const nr = r + dr;
-      if (free(nc, nr) && !seen[nr * g.cols + nc]) {
-        seen[nr * g.cols + nc] = 1;
-        q.push(nr * g.cols + nc);
-      }
-    }
-  }
-  return false;
 }
 
 /** Deterministic shuffle (so tests are repeatable). */
