@@ -110,7 +110,7 @@ export function buildBatchRequest(proposals: Proposal[], ctx: BatchContext, mode
     criteria: options,
   };
   const state = {
-    robot: "Marty, a 4-inch Moorebot Scout robot in a six-floor card house (each floor 4 ft × 8 ft, joined by long ramps; climbing a floor costs about 7% battery), streamed live; viewers chat requests and earn points when Marty visits cards for them",
+    robot: "Marty, a 4-inch Moorebot Scout robot in a six-floor card house (each floor 4 ft × 8 ft, joined by long ramps; climbing costs extra battery), streamed live; viewers chat requests and earn points when Marty visits cards for them",
     floor: `${ctx.pose.floor} (${ctx.pose.floorName})`,
     battery_percent: Math.round(ctx.battery.level),
     battery_range_m: r1(ctx.battery.range),

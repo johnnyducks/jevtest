@@ -307,3 +307,26 @@ test("when nobody talks, Marty thinks out loud, less and less often, and only wi
   const lines = s.snapshot().chat.filter((c) => c.kind === "marty" && c.idle).map((c) => (c as { text: string }).text);
   assert.notEqual(lines[0], lines[1], "different musings");
 });
+
+test("BATTERY_CAPACITY scales the battery: at 100×, the trip to the vault is easy even at 30%", async () => {
+  const { batteryWithCapacity, BATTERY } = await import("../../twin/battery.ts");
+  const { LiveSession } = await import("../session.ts");
+  const { building, builtInVoice, fakeJev } = await import("./helpers.ts");
+  const big = batteryWithCapacity(100);
+  assert.equal(big.perMeter, BATTERY.perMeter / 100);
+  assert.equal(big.climbPerMeter, BATTERY.climbPerMeter / 100);
+  assert.equal(big.reserve, BATTERY.reserve, "the reserve rule itself is unchanged");
+  const clock = { t: 1_000_000 };
+  const s = new LiveSession({ building, battery: big, evaluate: fakeJev().evaluate, jevModel: "t", say: builtInVoice, now: () => clock.t, config: { game: { spawnEverySec: [100_000, 100_000] } } });
+  s.operator({ action: "battery", level: 30 });
+  s.post("amy", "take me to the vault");
+  for (let i = 0; i < 12; i++) {
+    clock.t += 100;
+    s.tick(clock.t);
+    await s.settle();
+  }
+  const trip = s.snapshot().trip;
+  assert.ok(trip, "the same request the 1× battery refuses now goes ahead");
+  assert.ok(trip!.estimate.battery < 1, `the whole climb costs ${trip!.estimate.battery}%`);
+  assert.ok(s.snapshot().telemetry.battery.range > 500, "hundreds of meters of range");
+});

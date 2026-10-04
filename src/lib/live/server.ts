@@ -7,6 +7,7 @@
  */
 import { getBaseballKnowledge } from "../baseball/server";
 import { evaluate, jevConfig } from "../jev/client";
+import { batteryWithCapacity, DEFAULT_CAPACITY } from "../twin/battery";
 import { BUILDING } from "../twin/environment";
 import { martySay } from "../voice/openai";
 import { LiveSession } from "./session";
@@ -20,6 +21,7 @@ export function getLive(): LiveSession {
   const jev = jevConfig();
   const session = new LiveSession({
     building: BUILDING,
+    battery: batteryWithCapacity(batteryCapacity()),
     evaluate: jev.configured ? (body) => evaluate(body) : null,
     jevModel: jev.model,
     say: martySay,
@@ -50,3 +52,9 @@ export function operatorAllowed(key: unknown): boolean {
 }
 
 export const operatorKeyRequired = () => !!process.env.OPERATOR_KEY;
+
+/** BATTERY_CAPACITY in .env.local: how many times bigger than the baseline battery (default 100). */
+export function batteryCapacity(): number {
+  const n = Number(process.env.BATTERY_CAPACITY);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_CAPACITY;
+}

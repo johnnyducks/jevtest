@@ -26,6 +26,19 @@ export interface BatteryConfig {
 /** Tuned for a 4 in robot in a 4 × 8 ft building: a full charge drives about 36 m (≈118 ft); each ramp up costs ~7%. */
 export const BATTERY: BatteryConfig = { perMeter: 2.5, perRadian: 0.05, chargePerSecond: 1, dockRadius: 0.05, reserve: 10, deadAt: 1, climbPerMeter: 2 };
 
+/** The live show's default: a battery 100× bigger than BATTERY (change it with BATTERY_CAPACITY in .env.local). */
+export const DEFAULT_CAPACITY = 100;
+
+/**
+ * A battery `capacity` times bigger than BATTERY: driving, turning and climbing
+ * each use 1/capacity as much charge. Charging speed (% per second), the
+ * reserve and the dock are unchanged.
+ */
+export function batteryWithCapacity(capacity: number, base: BatteryConfig = BATTERY): BatteryConfig {
+  const c = Number.isFinite(capacity) && capacity > 0 ? capacity : 1;
+  return { ...base, perMeter: base.perMeter / c, perRadian: base.perRadian / c, climbPerMeter: base.climbPerMeter / c };
+}
+
 export class Battery {
   readonly config: BatteryConfig;
   private pct: number;

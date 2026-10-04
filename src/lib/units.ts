@@ -17,9 +17,11 @@ const MARKER = /\{\{m:(-?[\d.]+)\}\}/g;
 export function formatLength(meters: number, units: Units): string {
   if (units === "metric") {
     if (Math.abs(meters) < 1) return `${Math.round(meters * 100)} cm`;
+    if (Math.abs(meters) >= 100) return `${Math.round(meters).toLocaleString("en-US")} m`;
     return `${(Math.round(meters * 100) / 100).toFixed(2)} m`;
   }
   const inches = meters / IN;
+  if (Math.abs(inches) >= 1200) return `${Math.round(inches / 12).toLocaleString("en-US")} ft`;
   if (Math.abs(inches) < 24) return `${Math.round(inches * 10) / 10} in`.replace(".0 in", " in");
   const ft = Math.floor(inches / 12);
   const rest = Math.round(inches - ft * 12);

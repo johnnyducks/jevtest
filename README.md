@@ -22,6 +22,7 @@ Requires Node 20.9+. A Jev API key is required. Without one, Marty answers that 
 | `OPENAI_API_KEY` | no | — | Marty's chat lines, written in character (built-in lines otherwise) |
 | `OPENAI_MODEL` | no | `gpt-5` | Model for Marty's lines |
 | `CARDSIGHT_API_KEY` | no | — | Real card images from [CardSight AI](https://cardsight.ai) (`CARDSIGHTAI_API_KEY` also accepted; `CARDSIGHT_API_BASE` overrides the URL) |
+| `BATTERY_CAPACITY` | no | `100` | How many times bigger Marty's battery is than the baseline. Higher = Marty drives farther and declines fewer trips; `1` = the baseline (a full charge drives ~118 ft) |
 | `OPERATOR_KEY` | no | — | Locks the gear-menu controls (stop, resume, dock, reset, placement, speed, battery) behind a key. Without it, anyone who opens the page can use them |
 | `WIKIPEDIA_ENABLED` | no | `true` | Set to `false` to use Lahman data only |
 | `WIKIPEDIA_USER_AGENT` | no | `MartyLive/0.1 (…)` | User-Agent sent to the Wikipedia API (Wikimedia asks for contact details) |
@@ -81,7 +82,7 @@ Marty takes the highest-ranked option that passes. Other allowed requests wait i
 
 ### Battery
 
-Battery drains from **measured simulated movement**, not time. Each move counts the distance driven (2.5% per meter, about 0.06% per inch) and the turning (0.05% per radian). Climbing a ramp costs an extra 2% per meter of incline, about 7% per floor in total; going down costs nothing extra. A full charge drives about 118 ft. The HUD shows the battery %, the **driving range** above the 10% reserve, and during a trip the distance left and the ETA. Every floor has a charging dock (1% per second); "home" in the reserve rule means the dock on the floor the trip ends on. The numbers live in `lib/twin/battery.ts`.
+Battery drains from **measured simulated movement**, not time. Each move counts the distance driven, the turning, and extra for climbing ramps (going down costs nothing extra). How big the battery is comes from `BATTERY_CAPACITY` in `.env.local`, default **100**. At `1` (the baseline), driving costs 2.5% per meter, turning 0.05% per radian, and climbing an extra 2% per meter of incline (about 7% per floor), so a full charge drives about 118 ft. At 100, everything costs 1/100 of that, and a full charge drives over 2 miles. Lower the number to make battery a real constraint; restart the app after changing it. The HUD shows the battery %, the **driving range** above the 10% reserve, and during a trip the distance left and the ETA. Every floor has a charging dock (1% per second); "home" in the reserve rule means the dock on the floor the trip ends on. The numbers live in `lib/twin/battery.ts`.
 
 ### Points and bonuses
 

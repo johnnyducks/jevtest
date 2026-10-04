@@ -17,7 +17,7 @@ import { CommentaryPolicy } from "../baseball/commentary.ts";
 import type { KnowledgeBundle, KnowledgeRequest } from "../baseball/service.ts";
 import { type BatchContext, type BatchDecision, decideBatch, type Evaluate, executable, type Proposal } from "../decision/batch.ts";
 import { Game, type GameConfig, type GameSnapshot } from "../game/game.ts";
-import { Battery, BATTERY } from "../twin/battery.ts";
+import { Battery, BATTERY, type BatteryConfig } from "../twin/battery.ts";
 import { type Building, floorEnv, floorName, type Vec } from "../twin/environment.ts";
 import { toDegrees } from "../twin/geometry.ts";
 import { blockReason, buildGrid, type Grid, isFreePoint } from "../twin/grid.ts";
@@ -83,6 +83,8 @@ export interface LiveDeps {
   jevModel: string;
   say: (r: SayRequest) => Promise<ReplyResult>;
   knowledge?: (req: KnowledgeRequest) => Promise<KnowledgeBundle | null>;
+  /** Battery drain rates (default BATTERY; the server scales it by BATTERY_CAPACITY). */
+  battery?: BatteryConfig;
   now: () => number;
   seed?: number;
   config?: Partial<LiveConfig>;
@@ -179,7 +181,7 @@ export class LiveSession {
     this.lastTick = now;
     this.lastActivity = now;
     this.motion = new SimulatedMotion(this.b.defaultPose, MANUAL, DEFAULT_PARAMS);
-    this.battery = new Battery(100, BATTERY);
+    this.battery = new Battery(100, deps.battery ?? BATTERY);
     this.battery.resync(this.b.defaultPose);
     // Battery drains by measured motion only; teleports (placement, reset) re-sync instead.
     this.motion.subscribe((s) => (s.status === "moving" || s.status === "arrived" ? this.battery.observe(s.pose) : this.battery.resync(s.pose)));
@@ -348,7 +350,7 @@ export class LiveSession {
   // ── Decisions ─────────────────────────────────────────────────────────
 
   private plan(from: FloorPose, stops: StopRef[]) {
-    return planRoute(this.b, (f) => this.grid(f), from, stops, { speed: this.motion.getSpeed(), turnRate: DEFAULT_PARAMS.turnRate });
+    return planRoute(this.b, (f) => this.grid(f), from, stops, { speed: this.motion.getSpeed(), turnRate: DEFAULT_PARAMS.turnRate, battery: this.battery.config });
   }
 
   private proposal(w: Waiting, from: FloorPose): Proposal {
