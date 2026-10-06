@@ -90,6 +90,8 @@ export interface Telemetry {
   floor: number;
   level: number;
   status: MotionStatus;
+  /** Being driven by hand (keyboard teleop) right now. */
+  manual: boolean;
   speed: number;
   battery: { level: number; range: number; reserve: number; charging: boolean; dead: boolean };
   trip: { remainingMeters: number; etaSeconds: number } | null;

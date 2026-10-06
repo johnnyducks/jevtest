@@ -19,10 +19,12 @@ import type { KnowledgeBundle, KnowledgeRequest } from "../baseball/service.ts";
 import { type BatchContext, type BatchDecision, decideBatch, type Evaluate, executable, type Proposal } from "../decision/batch.ts";
 import { Game, type GameConfig, type GameSnapshot } from "../game/game.ts";
 import { Battery, BATTERY, type BatteryConfig } from "../twin/battery.ts";
-import { type Building, floorEnv, floorName, type Vec } from "../twin/environment.ts";
+import { type Building, floorEnv, floorName, type Pose, type Vec } from "../twin/environment.ts";
 import { toDegrees } from "../twin/geometry.ts";
-import { blockReason, buildGrid, connected, type Grid, isFreePoint } from "../twin/grid.ts";
+import { blockReason, buildGrid, connected, type Grid, isFreePoint, segmentFree } from "../twin/grid.ts";
 import { DEFAULT_PARAMS, type Scheduler, SimulatedMotion } from "../twin/motion.ts";
+import { floorAt, fitsLane, rampLength, rampSpot } from "../twin/ramps.ts";
+import { type DriveCommand, isStill, normalizeDrive } from "../twin/teleop.ts";
 import { type FloorPose, type ParsedRequest, parseRequest, planRoute, type RoutePlan, type StopRef } from "../twin/routes.ts";
 import { dist } from "../units.ts";
 import type { ChatLine, ReplyResult, SayRequest } from "../voice/openai.ts";
@@ -105,10 +107,6 @@ interface Trip {
   handle: string;
   /** Viewer requests earn points; Marty's own trips (dock) don't. */
   viewer: boolean;
-  /** Distance travelled on the current ramp leg already charged for climbing, meters. */
-  climbed: number;
-  /** Distance covered on the current ramp leg before a stop/resume (motion restarts its own count). */
-  rampOffset: number;
   refs: StopRef[];
   plan: RoutePlan;
   leg: number;
@@ -127,9 +125,18 @@ export type OperatorCommand =
   | { action: "place"; x: number; y: number; floor?: number }
   | { action: "rotate"; deg: number }
   | { action: "speed"; mps: number }
-  | { action: "battery"; level: number };
+  | { action: "battery"; level: number }
+  /** Keyboard teleop: hold this velocity (each part -1…1). Must be repeated within TELEOP_DEADMAN_MS or Marty stops. */
+  | ({ action: "drive" } & DriveCommand);
 
 export type PostResult = { ok: true; id: string } | { ok: false; code: "bad_handle" | "bad_text" | "rate_limited" | "busy"; message: string; retryAfterMs?: number };
+
+/**
+ * Teleop deadman: a drive command holds for this long. The driver's browser
+ * repeats it while keys are held, so a closed tab, lost connection or crashed
+ * page stops Marty within this time even if no stop ever arrives.
+ */
+export const TELEOP_DEADMAN_MS = 600;
 
 /** Scheduler that never fires: motion is advanced from tick(). */
 const MANUAL: Scheduler = { request: () => 1, cancel: () => {}, now: () => 0 };
@@ -158,6 +165,8 @@ export class LiveSession {
   private seq = 0;
   /** Bumped by operator stops: a decision that started before one may not move Marty. */
   private stopToken = 0;
+  /** While driven by hand: the time the last drive command expires (see TELEOP_DEADMAN_MS). */
+  private teleopUntil = 0;
   private lastTick: number;
   private lastPost = new Map<string, number[]>();
   private listeners = new Set<(e: LiveEvent) => void>();
@@ -201,8 +210,40 @@ export class LiveSession {
     return connected(g, floorEnv(this.b, c.floor).dock, c.approach);
   }
 
+  /** Being driven by hand right now. */
+  private driving(): boolean {
+    const s = this.motion.getState();
+    return s.drive !== null && s.status === "moving";
+  }
+
   private where(): FloorPose {
-    return { ...this.motion.getState().pose, floor: this.floor };
+    return { ...this.motion.getState().pose, floor: this.floor, level: this.level };
+  }
+
+  /**
+   * On a ramp, height follows position along the incline, and the floor that
+   * counts switches halfway up. Climbing costs battery by the height gained.
+   * Off the ramps, nothing changes.
+   */
+  private followHeight(pose: Vec) {
+    const spot = rampSpot(this.b, this.level, pose);
+    if (!spot) return;
+    const rise = spot.level - this.level;
+    if (rise > 0) this.battery.spend(rise * rampLength(spot.ramp) * this.battery.config.climbPerMeter);
+    this.level = spot.level;
+    this.floor = floorAt(spot.ramp, spot.level);
+  }
+
+  /** Where keyboard driving may take Marty next: the ramp corridors by footprint, everywhere else by the floor's clearance grid. */
+  private teleopFree(a: Pose, p: Pose): boolean {
+    const spot = rampSpot(this.b, this.level, p);
+    if (spot) return fitsLane(spot.ramp, p);
+    const g = this.grid(this.floor);
+    // Turning in place on a floor: the grid's clearance already covers his turning circle.
+    if (p.x === a.x && p.y === a.y) return true;
+    // Stepping off a ramp, or out of a spot the planner calls too tight: only moves that end somewhere free.
+    if (rampSpot(this.b, this.level, a) || !isFreePoint(g, a)) return isFreePoint(g, p);
+    return segmentFree(g, a, p);
   }
 
   // ── Subscriptions ─────────────────────────────────────────────────────
@@ -466,10 +507,13 @@ export class LiveSession {
     for (const p of proposals) this.markViewer(p.id, { state: "handled", intent: d.intents[p.id]?.intent });
 
     // Movement only if no operator stop happened while Jev was thinking.
+    // Nor while an operator is driving him by hand: manual control always wins.
     const stoppedMeanwhile = token !== this.stopToken;
     const chosen = d.action.kind === "proposal" ? byId.get(d.action.proposalId!) : undefined;
     let actionNote = "";
-    if (stoppedMeanwhile && d.action.kind !== "stay" && d.action.kind !== "continue") {
+    if (this.driving() && d.action.kind !== "stay" && d.action.kind !== "continue") {
+      actionNote = "An operator is driving Marty by hand, so this decision was not carried out.";
+    } else if (stoppedMeanwhile && d.action.kind !== "stay" && d.action.kind !== "continue") {
       actionNote = "The operator stopped Marty while Jev was deciding, so this decision was not carried out.";
     } else if (chosen?.plan) {
       this.startTrip(chosen.handle, true, chosen.parsed.stops, chosen.plan);
@@ -589,7 +633,7 @@ export class LiveSession {
       prev.status = "stopped";
       this.system(`Trip for @${prev.handle} (${prev.plan.summary}) was replaced.`, "info");
     }
-    this.trip = { id: this.id("t"), handle, viewer, refs, plan, leg: -1, dwellLeft: 0, stopsDone: 0, status: "running", startedAt: this.deps.now(), doing: "", climbed: 0, rampOffset: 0 };
+    this.trip = { id: this.id("t"), handle, viewer, refs, plan, leg: -1, dwellLeft: 0, stopsDone: 0, status: "running", startedAt: this.deps.now(), doing: "" };
     this.lastActivity = this.deps.now();
     this.nextLeg();
   }
@@ -624,11 +668,8 @@ export class LiveSession {
     }
     t.doing = leg.label;
     if (leg.kind === "drive") this.motion.follow(leg.path, `${t.id}:${t.leg}`, leg.face ?? null);
-    else if (leg.kind === "ramp") {
-      t.climbed = 0;
-      t.rampOffset = 0;
-      this.motion.follow(leg.path, `${t.id}:${t.leg}`);
-    } else t.dwellLeft = leg.seconds;
+    else if (leg.kind === "ramp") this.motion.follow(leg.path, `${t.id}:${t.leg}`);
+    else t.dwellLeft = leg.seconds;
     this.emit({ type: "trip", trip: this.publicTrip() });
   }
 
@@ -761,10 +802,9 @@ export class LiveSession {
         const t = this.trip;
         if (!t || t.status !== "stopped" || moving) return { ok: false, message: "Nothing to resume." };
         const refs = t.refs.slice(t.stopsDone);
-        if (t.plan.legs[t.leg]?.kind === "ramp") {
-          // Stopped part-way up (or down) a ramp: finish it, then carry on with the rest of the trip.
-          const st = this.motion.getState();
-          t.rampOffset += st.travelled;
+        const st = this.motion.getState();
+        if (t.plan.legs[t.leg]?.kind === "ramp" && st.missionId === `${t.id}:${t.leg}`) {
+          // Stopped part-way up (or down) a ramp, untouched since: finish it, then carry on with the rest of the trip.
           t.status = "running";
           t.doing = t.plan.legs[t.leg].label;
           this.motion.follow([{ x: st.pose.x, y: st.pose.y }, ...st.path.slice(st.waypoint)], `${t.id}:${t.leg}`);
@@ -810,7 +850,41 @@ export class LiveSession {
         this.battery.set(cmd.level);
         this.emitTelemetry(true);
         return { ok: true, message: `Battery set to ${Math.round(this.battery.level)}%.` };
+      case "drive":
+        return this.drive(normalizeDrive(cmd));
     }
+  }
+
+  /**
+   * Keyboard teleop. Goes through the same motion, battery and clearance as
+   * everything else: Marty can't drive into anything the planner keeps him out
+   * of, drains by the distance he actually covers (plus climbing), and can
+   * take the ramps between floors, between the wall and the rail. Taking the wheel stops any trip,
+   * like an operator stop, and Jev's decisions aren't carried out meanwhile.
+   */
+  private drive(c: DriveCommand): { ok: boolean; message: string } {
+    const now = this.deps.now();
+    if (isStill(c)) {
+      if (!this.driving()) return { ok: true, message: "Marty wasn't being driven." };
+      this.endDrive();
+      return { ok: true, message: "Stopped." };
+    }
+    if (this.battery.dead) return { ok: false, message: "Battery empty. Place Marty on the dock first." };
+    this.stopToken++;
+    if (this.running()) this.halt("an operator took manual control");
+    this.motion.drive(c, (a, p) => this.teleopFree(a, p));
+    this.teleopUntil = now + TELEOP_DEADMAN_MS;
+    this.lastActivity = now;
+    this.emitTelemetry(true);
+    return { ok: true, message: "Driving." };
+  }
+
+  private endDrive() {
+    this.motion.stop();
+    this.teleopUntil = 0;
+    // Requests that waited while someone drove get another look.
+    if (this.queued.length && this.dueAt === null) this.dueAt = this.deps.now() + 500;
+    this.emitTelemetry(true);
   }
 
   reset() {
@@ -858,21 +932,23 @@ export class LiveSession {
       } else if (leg?.kind === "ramp") {
         this.motion.advance(dt);
         const s = this.motion.getState();
-        // Height follows the distance actually travelled along the incline; climbing costs extra battery.
-        const [a, z] = leg.incline;
-        const along = Math.min(z, Math.max(a, s.travelled + t.rampOffset));
-        const frac = (along - a) / (z - a);
-        this.level = leg.from + (leg.to - leg.from) * frac;
-        if (leg.to > leg.from) {
-          this.battery.spend((along - a - t.climbed) * this.battery.config.climbPerMeter);
-          t.climbed = along - a;
-        }
+        this.followHeight(s.pose);
         if (s.status === "arrived" && s.missionId === `${t.id}:${t.leg}`) this.nextLeg();
       } else if (leg?.kind === "dwell") {
         const used = Math.min(dt, t.dwellLeft);
         if (leg.battery) this.battery.spend((leg.battery * used) / leg.seconds);
         t.dwellLeft -= dt;
         if (t.dwellLeft <= 1e-9) this.nextLeg();
+      }
+    } else if (this.driving()) {
+      if (this.battery.dead) {
+        this.endDrive();
+        this.system("Battery empty. Marty can't move until he's carried back to the dock (operator: place him on the dock) or the session is reset.", "warn");
+      } else if (now > this.teleopUntil) {
+        this.endDrive(); // deadman: the driver's browser stopped repeating the command
+      } else {
+        this.motion.advance(dt);
+        this.followHeight(this.motion.getState().pose);
       }
     }
 
@@ -933,6 +1009,7 @@ export class LiveSession {
       floor: this.floor,
       level: Math.round(this.level * 1000) / 1000,
       status: t ? "moving" : s.status,
+      manual: this.driving(),
       speed: this.motion.getSpeed(),
       battery: { level: Math.round(this.battery.level * 10) / 10, range: Math.round(this.battery.range * 100) / 100, reserve: this.battery.config.reserve, charging: this.charging, dead: this.battery.dead },
       trip: t ? { remainingMeters: Math.round(rem.meters * 1000) / 1000, etaSeconds: Math.round(rem.seconds) } : null,

@@ -14,10 +14,13 @@ import { fuzzyPhraseIn } from "./fuzzy.ts";
 import { wrapAngle } from "./geometry.ts";
 import { type Grid, isFreePoint } from "./grid.ts";
 import { nearestReachable, planPath } from "./pathfinding.ts";
+import { rampLength, rampSpot } from "./ramps.ts";
 import { normalize, resolveArea, resolveCardByName, resolveNearestCard } from "./resolve.ts";
 
 /** A pose plus the floor it's on. */
 export interface FloorPose extends Pose {
+  /** Continuous height in floors, when part-way up a ramp (defaults to `floor`). */
+  level?: number;
   floor: number;
 }
 
@@ -250,7 +253,7 @@ export function planRoute(b: Building, grids: FloorGrids, from: FloorPose, stops
   const view = opts.viewSeconds ?? 3;
   const legs: Leg[] = [];
   const named: RoutePlan["stops"] = [];
-  let cursor: FloorPose = { ...from };
+  let cursor: FloorPose = { x: from.x, y: from.y, heading: from.heading, floor: from.floor };
   let fail: string | undefined;
   let turnRad = 0;
   let climb = 0;
@@ -293,6 +296,24 @@ export function planRoute(b: Building, grids: FloorGrids, from: FloorPose, stops
     }
     return undefined;
   };
+
+  // Starting on a ramp (left there by hand, or stopped part-way): first drive off it at the nearer end.
+  const onRamp = rampSpot(b, from.level ?? from.floor, from);
+  if (onRamp && !isFreePoint(grids(from.floor), from)) {
+    const r = onRamp.ramp;
+    const up = onRamp.level - r.from >= 0.5;
+    const end = up ? r.top : r.foot;
+    const out = up ? r.exit : r.entry;
+    const passEnd = up ? onRamp.along < onRamp.length : onRamp.along > 0;
+    const path = [{ x: from.x, y: from.y }, ...(passEnd ? [end] : []), out];
+    const next = up ? r.to : r.from;
+    const first = Math.hypot(path[1].x - path[0].x, path[1].y - path[0].y);
+    legs.push({ kind: "ramp", from: cursor.floor, to: next, label: `${up ? "climbing" : "heading down"} to floor ${next}`, path, meters: r3(len(path)), incline: [0, r3(passEnd ? first : 0)] });
+    turnRad += turningAlong(cursor, path);
+    if (up) climb += (r.to - onRamp.level) * rampLength(r);
+    const before = path.at(-2)!;
+    cursor = { x: out.x, y: out.y, heading: Math.atan2(out.y - before.y, out.x - before.x), floor: next };
+  }
 
   for (const s of stops) {
     if (s.kind === "card" || s.kind === "nearest") {

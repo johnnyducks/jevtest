@@ -9,6 +9,7 @@
  */
 import type { Pose, Vec } from "./environment.ts";
 import { wrapAngle } from "./geometry.ts";
+import { type DriveCommand, driveStep, isStill } from "./teleop.ts";
 
 export type MotionStatus = "idle" | "moving" | "arrived" | "stopped";
 
@@ -25,6 +26,8 @@ export interface MotionState {
   travelled: number;
   /** Heading to turn to after the last waypoint (e.g. to face a card), radians; null = keep the travel heading. */
   face: number | null;
+  /** Manual velocity command (keyboard teleop) while being driven by hand; null when following a route or still. */
+  drive: DriveCommand | null;
   /** "simulated" for this prototype; a hardware adapter would report "telemetry". */
   source: "simulated";
 }
@@ -37,6 +40,8 @@ export interface PoseSource {
 export interface MotionCommands {
   /** Start following `path` for `missionId`, then turn to `face` if given. Cancels any previous motion. */
   follow(path: Vec[], missionId: string, face?: number | null): void;
+  /** Drive by velocity (forward / strafe / rotate) until stopped or given a new command. Cancels any route. */
+  drive(cmd: DriveCommand, free: (a: Pose, b: Pose) => boolean): void;
   /** Halt immediately. Leaves Marty where it is. */
   stop(): void;
   /** Place Marty (only valid while not moving). */
@@ -139,7 +144,7 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
   constructor(initial: Pose, scheduler: Scheduler = defaultScheduler, params: MotionParams = DEFAULT_PARAMS) {
     this.scheduler = scheduler;
     this.params = { ...params };
-    this.state = { pose: { ...initial }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0, face: null, source: "simulated" };
+    this.state = { pose: { ...initial }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0, face: null, drive: null, source: "simulated" };
   }
 
   getState = () => this.state;
@@ -166,8 +171,30 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
     const run = ++this.run;
     const turning = face !== null && Math.abs(wrapAngle(face - this.state.pose.heading)) > 1e-4;
     const moving = path.length > 1 || turning;
-    this.emit({ ...this.state, status: moving ? "moving" : "arrived", path, waypoint: 1, missionId, travelled: 0, face });
-    if (!moving) return;
+    this.emit({ ...this.state, status: moving ? "moving" : "arrived", path, waypoint: 1, missionId, travelled: 0, face, drive: null });
+    if (moving) this.loop(run);
+  }
+
+  /** Teleop: hold a velocity command. A still command stops Marty. */
+  drive(cmd: DriveCommand, free: (a: Pose, b: Pose) => boolean) {
+    if (isStill(cmd)) {
+      this.stop();
+      return;
+    }
+    const wasDriving = this.state.drive !== null && this.state.status === "moving";
+    this.free = free;
+    if (wasDriving) {
+      // Same drive session, new keys: keep the running clock so there's no hitch.
+      this.emit({ ...this.state, drive: cmd });
+      return;
+    }
+    this.cancelFrame();
+    const run = ++this.run;
+    this.emit({ ...this.state, status: "moving", path: [], waypoint: 0, missionId: "teleop", travelled: 0, face: null, drive: cmd });
+    this.loop(run);
+  }
+
+  private loop(run: number) {
     this.last = this.scheduler.now();
     const tick = (now: number) => {
       if (run !== this.run) return; // stale callback from a cancelled mission
@@ -180,22 +207,31 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
     this.frame = this.scheduler.request(tick);
   }
 
+  /** Where Marty fits while driven by hand (set with each drive command). */
+  private free: (a: Pose, b: Pose) => boolean = () => true;
+
   /** Advance the simulation by `dt` seconds (also used directly by tests). */
   advance(dt: number) {
     if (this.state.status !== "moving") return;
+    const d = this.state.drive;
+    if (d) {
+      const pose = driveStep(this.state.pose, d, dt, this.params.speed, this.params.turnRate, this.free);
+      this.emit({ ...this.state, pose, travelled: this.state.travelled + Math.hypot(pose.x - this.state.pose.x, pose.y - this.state.pose.y) });
+      return;
+    }
     this.emit(step(this.state, dt, this.params));
   }
 
   stop() {
     this.cancelFrame();
     this.run++;
-    if (this.state.status === "moving") this.emit({ ...this.state, status: "stopped" });
+    if (this.state.status === "moving") this.emit({ ...this.state, status: "stopped", drive: null });
   }
 
   setPose(pose: Pose) {
     this.cancelFrame();
     this.run++;
-    this.emit({ ...this.state, pose: { ...pose }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0, face: null });
+    this.emit({ ...this.state, pose: { ...pose }, status: "idle", path: [], waypoint: 0, missionId: null, travelled: 0, face: null, drive: null });
   }
 
   setSpeed(mps: number) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { StatusBody } from "@/lib/decision/contracts";
-import { Bot, Logo } from "./icons";
+import { Bot } from "./icons";
 import Popover from "./Popover";
 import LiveView from "./live/LiveView";
 import ThemeToggle from "./ThemeToggle";
@@ -22,9 +22,6 @@ export default function Studio() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">
-            <Logo />
-          </span>
           <span className="brand-name">MARTY.LIVE</span>
         </div>
         <div className="topbar-spacer" />

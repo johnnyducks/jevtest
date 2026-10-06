@@ -102,6 +102,35 @@ The **in / cm** toggle next to the view switch shows every distance in inches an
 
 The gear icon on the map has Stop, Resume (finishes the remaining stops), Dock, Reset (clears chat, scores and battery for everyone), speed, heading, a battery slider for testing, and the clearance overlay. Operators can also drag Marty to a new spot on the floor being viewed. Set `OPERATOR_KEY` to require a key for all of these; it's entered in the gear menu and remembered in that browser.
 
+### Keyboard driving (FPV)
+
+In the **FPV** view, operators can drive Marty from the keyboard. The Scout has Mecanum wheels, so he moves in any direction without turning first:
+
+| Key | Does |
+| --- | --- |
+| W / S | Forward / backward |
+| A / D | Strafe left / right |
+| Q / E | Rotate left / right |
+| Shift (hold) | Precision mode: about 25% speed |
+| Space | Stop (the same operator stop as the gear menu) |
+
+Keys combine: W+D drives diagonally, and W+E drives forward while turning right. Held keys set one velocity command: **forward**, **strafe** and **rotate**, each from −1 to 1. The diagonal is normalized, so W+D is no faster than W alone (`lib/twin/teleop.ts`). A small panel in the FPV view's bottom-left corner shows the layout. Keys light up while held, and the panel shows when precision mode is on. The status chip in the HUD reads **manual** while someone is driving.
+
+Driving goes through the same operator channel as the gear menu (`POST /api/live/operator { action: "drive", forward, strafe, rotate }`), with the same `OPERATOR_KEY` check. On the server it runs through the same motion, clearance and battery as every trip:
+- Marty can't drive into walls or furniture: he keeps the planner's clearance, and slides along an obstacle he brushes against.
+- He can drive up and down the ramps. Line up at either end and drive on: his height follows the incline, and the floor shown switches halfway up. On a ramp he only has to fit between the wall and the rail (by his real 4 × 4.3 in footprint, so he can turn and strafe on it, but not through the rail). He can't board a ramp from the side, drive under one, or drop through the opening where one arrives (`lib/twin/ramps.ts`).
+- Battery drains by the distance he actually covers, plus the extra for climbing, and he can't be driven on an empty battery.
+- If he's left part-way up a ramp, the next trip starts by driving him off at the nearer end.
+- Taking the wheel stops a running trip like an operator stop does. **Resume** in the gear menu continues it afterwards. Jev's decisions aren't carried out while someone is driving.
+
+Stopping:
+- Letting go of all the keys stops Marty.
+- He also stops if the browser window loses focus, the tab is hidden, you click into the chat or any other text box, or you leave the FPV view.
+- While keys are held, the browser repeats the command every 200 ms. If the server hears nothing for 600 ms (closed tab, lost connection), Marty stops on his own.
+- Keys typed into the chat or other inputs never drive him. Ctrl, Alt and ⌘ shortcuts are left alone.
+
+Mouse, touch and chat requests work as before. The panel is hidden on phones and tablets, which have no keyboard. Like everything else here, this drives the simulated Marty; see **Future hardware**.
+
 ### Who decides what
 
 | Step | Done by | Module |
@@ -160,7 +189,10 @@ The **2D / 3D / FPV** switch at the bottom-right of the map changes only how the
 - **3D**: an observer camera on a dollhouse cutaway: the floors above the one you're viewing are hidden, so you see into it, with the floors below underneath and the ramp openings to look down through. Drag to orbit, scroll or pinch to zoom, right-drag to pan. Click a card to request it.
 - **Floors**: the numbers on the left of the map pick which floor you're looking at (2D and 3D). The green dot marks Marty's floor, and the HUD always says which floor he's on. Pick his floor again, or ⌖, to follow him as he changes floors.
 - **Arriving at a card**, Marty turns in place to face it squarely: the route plan includes that final turn, and it's counted in the time and battery estimates. In FPV the camera then tilts so the card (a real 3.5 in card, from about 3.3 in away) fills most of the frame, and eases back out as he drives off. The framing rule, `framing()` in `lib/twin/space3d.ts`, is tested for every reachable card.
-- **FPV**: the view from a camera on Marty's nose, about 2.3 in up, tilted up 5°. The floor above is his ceiling. On ramps he rises with the incline and looks along it. It moves with every pose update, and turns are damped slightly so they feel like a camera rather than a cut. A reticle, floor, heading and position readout, and labels sit on top: card name and current points for cards on his floor within about 3 ft ahead, plus a **NEXT** marker on the trip's next stop.
+- **FPV**: the view from a camera on Marty's nose, about 2.3 in up, tilted up 5°. The floor above is his ceiling. On ramps he rises with the incline and looks along it: up it, down it, or level when he's side-on (then he rolls instead). It moves with every pose update, and turns are damped slightly so they feel like a camera rather than a cut. A reticle, floor, heading and position readout, and labels sit on top: card name and current points for cards on his floor within about 3 ft ahead, plus a **NEXT** marker on the trip's next stop.
+
+- **Ramps** are translucent acrylic decks with lit edges in the building's accent colour, and a glass balustrade with a slate rail on the open side. You can see the floor below through them.
+- **Lighting**: every ceiling has eight recessed downlights. The floor being viewed (Marty's, in FPV) is lit by them; the rest show the fixtures only, which keeps the scene fast. The top floor gets a roof in FPV so it has a ceiling too. Each card has a thin LED strip along its bottom edge that washes warm light up over the card and the wall behind it.
 
 The 2D→3D mapping lives in `lib/twin/space3d.ts`. It holds the axes, heights of walls and furniture, card placement and the FPV camera mount, and its tests check that the camera follows the same poses the 2D map draws. Rendering uses Three.js through React Three Fiber (`components/three/Room3D.tsx`). That code loads only when someone opens a 3D view. Without WebGL, the 3D views show a short notice and the 2D map still works.
 
@@ -189,7 +221,7 @@ Positions are fictional. The origin of each floor is its south-west corner, +y n
 
 ### Future hardware
 
-Marty's position comes only from the `PoseSource` interface in `lib/twin/motion.ts`. `SimulatedMotion` is the only implementation. A real Scout telemetry adapter could implement the same interface later. No hardware integration exists in this prototype.
+Marty's position comes only from the `PoseSource` interface in `lib/twin/motion.ts`. `SimulatedMotion` is the only implementation. A real Scout telemetry adapter could implement the same interface later. Movement commands go through `MotionCommands` (`follow`, `drive`, `stop`), so a hardware adapter would also receive keyboard driving as forward / strafe / rotate velocities. No hardware integration exists in this prototype.
 
 ## Baseball knowledge
 
@@ -250,7 +282,7 @@ Wikipedia supplements the statistics with biography and trivia:
 
 ### Light and dark mode
 
-The ☀ / ☾ button in the top bar switches between light and dark. The first time you visit, the app follows your computer's setting (macOS: System Settings → Appearance); after you press the button it remembers your choice in that browser. The 3D views recolour too. Colours live as variables at the top of `src/app/globals.css` (`:root` for dark, `:root[data-theme="light"]` for light), so tweaking the light palette is a one-place edit.
+The sun / moon button in the top bar switches between light and dark. The first time you visit, the app follows your computer's setting (macOS: System Settings → Appearance); after you press the button it remembers your choice in that browser. The 3D views recolour too. Colours live as variables at the top of `src/app/globals.css` (`:root` for dark, `:root[data-theme="light"]` for light), so tweaking the light palette is a one-place edit.
 
 ### Succulents
 
@@ -276,7 +308,7 @@ src/
   lib/game/           points, bonuses, leaderboard
   lib/cardsight/      CardSight AI client (server), strict card matching, image cache + local overrides
   lib/twin/           environment & cards, geometry, occupancy grid, A*, resolution, typo matching,
-                      multi-floor routes and ramps, battery, motion (PoseSource + SimulatedMotion), 2D↔3D mapping
+                      multi-floor routes and ramps, battery, motion (PoseSource + SimulatedMotion), teleop, 2D↔3D mapping
   lib/units.ts        inches/feet vs cm/m formatting, and the distance markers used in shared chat text
   lib/voice/          Marty's voice: persona + OpenAI calls (server), built-in lines; elevenlabs.ts: speech (server)
   lib/baseball/       knowledge store, fact building/selection, Wikipedia client, commentary policy, service
@@ -286,10 +318,10 @@ src/
   app/api/live/chat   POST { handle, text }: queue a viewer message
   app/api/decor       GET: is a plant model uploaded? /api/decor/model GET the .glb, PUT/DELETE (operator) to replace/remove it
   app/api/live/speech/<id> GET: one of Marty's lines as audio (ElevenLabs, cached)
-  app/api/live/operator POST { action, key? }: stop, resume, dock, reset, place, rotate, speed, battery
+  app/api/live/operator POST { action, key? }: stop, resume, dock, reset, place, rotate, speed, battery, drive (keyboard teleop)
   app/api/cards       GET: card artwork for the room (CardSight link + image URLs); /api/cards/<id>/image proxies the front
   app/api/status      GET: which models are configured, whether an operator key is required (no secrets)
-  components/         Studio (header), Popover, live/LiveView + LiveChat + useLive, twin/TwinMap (SVG),
+  components/         Studio (header), Popover, live/LiveView + LiveChat + useLive + useTeleop/TeleopPad (keyboard driving), twin/TwinMap (SVG),
                       three/Room3D (3D observer + FPV, loaded on demand)
 ```
 

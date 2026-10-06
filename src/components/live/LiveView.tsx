@@ -19,6 +19,8 @@ import LiveChat from "./LiveChat";
 import { useLive, useSmoothPose, useStored } from "./useLive";
 import { useMartyVoice } from "./useMartyVoice";
 import PlantModel from "./PlantModel";
+import TeleopPad from "./TeleopPad";
+import { useTeleop } from "./useTeleop";
 
 // The 3D views load only when someone opens them, so the 2D map stays as light as before.
 const Room3D = dynamic(() => import("../three/Room3D"), {
@@ -56,7 +58,9 @@ function Hud({ snap, units }: { snap: LiveSnapshot; units: Units }) {
   const tone = b.dead ? "bad" : b.level < 20 ? "bad" : b.level < 40 ? "warn" : "ok";
   return (
     <div className="map-hud live-hud mono" aria-label="Marty's status">
-      <span className={`m-chip ${t.status === "moving" ? "live" : t.status === "stopped" ? "warn" : "muted"}`}>{t.status}</span>
+      <span className={`m-chip ${t.status === "moving" ? "live" : t.status === "stopped" ? "warn" : "muted"}`} title={t.manual ? "Being driven by hand from the keyboard" : undefined}>
+        {t.manual ? "manual" : t.status}
+      </span>
       <span className="floor-chip" title={floorName(BUILDING, t.floor)}>
         FLOOR <b>{t.floor}</b>
         <span className="floor-chip-name">{floorName(BUILDING, t.floor)}</span>
@@ -185,6 +189,13 @@ export default function LiveView({ keyRequired, speechAvailable = false }: { key
     if (!r.ok || body.action === "place") setNotice({ kind: r.ok ? "info" : "warn", text: r.message });
   };
 
+  // Keyboard driving: FPV only, and only for whoever may use the operator controls.
+  const teleop = useTeleop(
+    view === "fpv" && canOperate && !!snap,
+    (body) => post("/api/live/operator", { ...body, key: opKey || undefined }),
+    (message) => setNotice({ kind: "warn", text: message }),
+  );
+
   const saveHandle = () => {
     const h = handleDraft.trim().replace(/^@/, "");
     if (!HANDLE.test(h)) {
@@ -272,6 +283,8 @@ export default function LiveView({ keyRequired, speechAvailable = false }: { key
             ))}
           </div>
 
+          {view === "fpv" && <TeleopPad {...teleop} locked={!canOperate} />}
+
           {view !== "fpv" && (
             <div className="floor-picker mono" role="group" aria-label="Floor to view">
               {[...BUILDING.floors].reverse().map((f) => (
@@ -335,6 +348,7 @@ export default function LiveView({ keyRequired, speechAvailable = false }: { key
                 <li>Battery drains with distance. Marty recharges at the dock.</li>
                 <li>Hover a card to see the real card; click to request it. On a phone, tap a card to see it, then send Marty from there.</li>
                 <li>2D / 3D / FPV switches the view. 3D: drag to orbit, scroll to zoom. FPV is Marty&apos;s own camera.</li>
+                <li>Drive in FPV (operators): W/S forward and back, A/D strafe, Q/E rotate, Shift for precision, Space to stop.</li>
               </ul>
             </Popover>
             <Popover label="Settings" align="right" hover={false} trigger={<Gear width={16} height={16} />}>

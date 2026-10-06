@@ -20,7 +20,9 @@ function parse(b: Record<string, unknown>): OperatorCommand | null {
     case "place": {
       const x = num(b.x, 0, 100);
       const y = num(b.y, 0, 100);
-      return x === null || y === null ? null : { action: "place", x, y };
+      const floor = b.floor === undefined ? undefined : num(b.floor, 1, 99);
+      if (x === null || y === null || floor === null) return null;
+      return { action: "place", x, y, ...(floor !== undefined ? { floor: Math.round(floor) } : {}) };
     }
     case "rotate": {
       const deg = num(b.deg, -360, 360);
@@ -33,6 +35,12 @@ function parse(b: Record<string, unknown>): OperatorCommand | null {
     case "battery": {
       const level = num(b.level, 0, 100);
       return level === null ? null : { action: "battery", level };
+    }
+    case "drive": {
+      const forward = num(b.forward, -1, 1);
+      const strafe = num(b.strafe, -1, 1);
+      const rotate = num(b.rotate, -1, 1);
+      return forward === null || strafe === null || rotate === null ? null : { action: "drive", forward, strafe, rotate };
     }
     default:
       return null;

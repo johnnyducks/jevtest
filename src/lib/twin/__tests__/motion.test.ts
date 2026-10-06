@@ -10,7 +10,7 @@ const path = [
 ];
 
 test("step() follows the path, turns at corners and arrives", () => {
-  let s: MotionState = { pose: { x: 1, y: 1, heading: 0 }, status: "moving", path, waypoint: 1, missionId: "t", travelled: 0, face: null, source: "simulated" };
+  let s: MotionState = { pose: { x: 1, y: 1, heading: 0 }, status: "moving", path, waypoint: 1, missionId: "t", travelled: 0, face: null, drive: null, source: "simulated" };
   let maxHeading = 0;
   for (let i = 0; i < 2000 && s.status === "moving"; i++) {
     s = step(s, 0.05, DEFAULT_PARAMS);

@@ -29,6 +29,7 @@ import {
   type Ramp,
 } from "@/lib/twin/environment";
 import type { MotionStatus } from "@/lib/twin/motion";
+import { rampSpot, rampTilt } from "@/lib/twin/ramps";
 import {
   CARD_SIZE,
   cardPlacement,
@@ -82,6 +83,12 @@ const DARK = {
   wall: "#1d2833",
   slab: "#0b1117",
   accent: "#22d3ee",
+  deck: "#8fd3ea",
+  deckOpacity: 0.3,
+  glassOpacity: 0.1,
+  rail: "#56697d",
+  lamp: "#fff1d6",
+  washOpacity: 0.5,
 };
 const LIGHT = {
   bg: "#e9eff4",
@@ -89,6 +96,12 @@ const LIGHT = {
   wall: "#b9c7d4",
   slab: "#9fb0c0",
   accent: "#0e7490",
+  deck: "#6fa9bd",
+  deckOpacity: 0.38,
+  glassOpacity: 0.16,
+  rail: "#7d90a3",
+  lamp: "#fff1d6",
+  washOpacity: 0.3,
 };
 
 /** Colours that depend on the theme; set once per render pass (module-level, as the scene is one tree). */
@@ -128,6 +141,12 @@ const {
   slab: SLAB,
 } = DIMENSIONS;
 const RAMP_ANGLE = Math.atan2(FH, DIMENSIONS.rampLength);
+
+/** Body tilt on a ramp (none on a floor). */
+function tiltAt(b: Building, s: Live) {
+  const spot = rampSpot(b, s.level, s.pose);
+  return spot && spot.level > spot.ramp.from && spot.level < spot.ramp.to ? rampTilt(spot.ramp, s.pose.heading) : { pitch: 0, roll: 0 };
+}
 
 // ── Textures (drawn once on a canvas; no image files) ────────────────────
 
@@ -357,38 +376,115 @@ function Furniture({ obstacles }: { obstacles: Obstacle[] }) {
   );
 }
 
-/** A ramp from this floor up to the next: an inclined deck along its lane, with a low rail on the open side. */
+/**
+ * A ramp from this floor up to the next: a translucent acrylic deck with lit
+ * edges along its lane, and a glass balustrade with a metal rail and posts on
+ * the open side (the other side is the room wall). Translucent, so the floor
+ * below shows through and the deck casts no hard shadow.
+ */
 function RampDeck({ r }: { r: Ramp }) {
   const len = Math.hypot(DIMENSIONS.rampLength, FH);
   const mid = { x: (r.foot.x + r.top.x) / 2, y: r.foot.y };
   const up = r.top.x > r.foot.x ? 1 : -1;
-  const railY = r.lane.y < D / 2 ? r.lane.y + r.lane.h : r.lane.y;
+  const wallSouth = r.lane.y < D / 2;
+  const openY = wallSouth ? r.lane.y + r.lane.h : r.lane.y;
+  const wallY = wallSouth ? r.lane.y : r.lane.y + r.lane.h;
+  const railH = 0.038; // 1.5 in: a little shy of Marty's height
+  const posts = Math.round(DIMENSIONS.rampLength / (8 * 0.0254));
+  const tilt = up * RAMP_ANGLE;
   return (
     <group>
-      <group position={toScene(mid, FH / 2)} rotation-z={up * RAMP_ANGLE}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[len, 0.006, r.lane.h]} />
+      <group position={toScene(mid, FH / 2)} rotation-z={tilt}>
+        <mesh renderOrder={1}>
+          <boxGeometry args={[len, 0.005, r.lane.h]} />
           <meshStandardMaterial
-            color="#3a2f1c"
-            emissive={COLORS.amber}
-            emissiveIntensity={0.05}
-            roughness={0.7}
+            color={COLORS.deck}
+            transparent
+            opacity={COLORS.deckOpacity}
+            roughness={0.18}
+            metalness={0.1}
+            depthWrite={false}
           />
         </mesh>
-      </group>
-      <group
-        position={toScene({ x: mid.x, y: railY }, FH / 2 + 0.015)}
-        rotation-z={up * RAMP_ANGLE}
-      >
-        <mesh>
-          <boxGeometry args={[len, 0.004, 0.004]} />
+        {/* Lit acrylic edges: the deck's outline, in the building's accent. */}
+        {[openY, wallY].map((y) => (
+          <mesh key={y} position={[0, 0.0026, -(y - mid.y) * 0.985]}>
+            <boxGeometry args={[len, 0.0016, 0.0016]} />
+            <meshBasicMaterial color={COLORS.accent} transparent opacity={0.85} toneMapped={false} />
+          </mesh>
+        ))}
+        {/* Glass balustrade on the open side. */}
+        <mesh position={[0, railH / 2, -(openY - mid.y)]} renderOrder={2}>
+          <boxGeometry args={[len, railH, 0.0015]} />
           <meshStandardMaterial
-            color={COLORS.amber}
-            emissive={COLORS.amber}
-            emissiveIntensity={0.3}
+            color={COLORS.deck}
+            transparent
+            opacity={COLORS.glassOpacity}
+            roughness={0.1}
+            depthWrite={false}
+            side={THREE.DoubleSide}
           />
         </mesh>
+        <mesh position={[0, railH, -(openY - mid.y)]}>
+          <boxGeometry args={[len, 0.003, 0.004]} />
+          <meshStandardMaterial color={COLORS.rail} metalness={0.6} roughness={0.35} />
+        </mesh>
       </group>
+      {/* Posts stand plumb, at the deck's height where they meet it. */}
+      {Array.from({ length: posts + 1 }, (_, i) => i / posts).map((t) => {
+        const x = r.foot.x + (r.top.x - r.foot.x) * t;
+        return (
+          <mesh key={t} position={toScene({ x, y: openY }, FH * t + railH / 2)}>
+            <cylinderGeometry args={[0.0013, 0.0013, railH, 6]} />
+            <meshStandardMaterial color={COLORS.rail} metalness={0.6} roughness={0.35} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+// ── Ceiling lights ────────────────────────────────────────────────────────
+
+/** Recessed downlights: a 4 × 2 grid on every ceiling, clear of the ramp openings along the long walls. */
+const LAMPS = [1, 3, 5, 7].flatMap((i) => [D / 4, (3 * D) / 4].map((y) => ({ x: (W * i) / 8, y })));
+/** Underside of the slab above, relative to this floor. */
+const CEILING = FH - SLAB;
+
+function Downlights() {
+  return (
+    <>
+      {LAMPS.map((p) => (
+        <group key={`${p.x}:${p.y}`} position={toScene(p, CEILING)}>
+          <mesh position={[0, -0.0012, 0]}>
+            <cylinderGeometry args={[0.017, 0.017, 0.0024, 24]} />
+            <meshStandardMaterial color={COLORS.rail} metalness={0.5} roughness={0.4} />
+          </mesh>
+          <mesh position={[0, -0.0025, 0]} rotation-x={Math.PI / 2}>
+            <circleGeometry args={[0.0125, 24]} />
+            <meshBasicMaterial color={COLORS.lamp} toneMapped={false} />
+          </mesh>
+        </group>
+      ))}
+    </>
+  );
+}
+
+/**
+ * The light the downlights give, on one floor at a time (Marty's in FPV, the
+ * one being viewed in 3D): eight point lights is cheap, forty-eight isn't.
+ * A fixed count, moved between floors, so shaders never recompile.
+ */
+function CeilingLights({ live, mode, viewFloor }: { live: React.RefObject<Live>; mode: CameraMode; viewFloor: number }) {
+  const g = useRef<THREE.Group>(null);
+  useFrame(() => {
+    if (g.current) g.current.position.y = floorBase(mode === "fpv" ? (live.current?.floor ?? viewFloor) : viewFloor);
+  });
+  return (
+    <group ref={g}>
+      {LAMPS.map((p) => (
+        <pointLight key={`${p.x}:${p.y}`} position={toScene(p, CEILING - 0.006)} color={COLORS.lamp} intensity={0.09} distance={1.2} decay={2} />
+      ))}
     </group>
   );
 }
@@ -451,6 +547,62 @@ function useCardFace(card: Card, src: string | null | undefined) {
   return face ?? { tex: placeholder, aspect: CARD_SIZE.w / CARD_SIZE.h };
 }
 
+/** Uplight from a strip LED: brightest along the bottom edge, fading upward and toward the sides. Drawn once. */
+let washTexture: THREE.CanvasTexture | null = null;
+function uplightWash() {
+  if (washTexture) return washTexture;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  const img = g.createImageData(c.width, c.height);
+  for (let y = 0; y < c.height; y++) {
+    const up = 1 - y / (c.height - 1); // 1 at the top of the canvas = far from the strip
+    for (let x = 0; x < c.width; x++) {
+      const side = Math.abs(x / (c.width - 1) - 0.5) * 2;
+      const a = Math.pow(1 - up, 2.2) * Math.pow(1 - side * side, 1.5);
+      const i = (y * c.width + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 236;
+      img.data[i + 2] = 205;
+      img.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  g.putImageData(img, 0, 0);
+  washTexture = new THREE.CanvasTexture(c);
+  washTexture.colorSpace = THREE.SRGBColorSpace;
+  return washTexture;
+}
+
+/** A thin LED strip along the bottom of a card, washing light up over it and the wall behind. */
+function CardUplight({ w }: { w: number }) {
+  const bottom = -CARD_SIZE.h / 2;
+  const washH = CARD_SIZE.h * 1.05;
+  return (
+    <>
+      <mesh position={[0, bottom - 0.0035, 0.0015]}>
+        <boxGeometry args={[w + 0.004, 0.0022, 0.0035]} />
+        <meshStandardMaterial color={COLORS.rail} metalness={0.5} roughness={0.4} />
+      </mesh>
+      <mesh position={[0, bottom - 0.0028, 0.0034]}>
+        <boxGeometry args={[w, 0.0008, 0.0005]} />
+        <meshBasicMaterial color={COLORS.lamp} toneMapped={false} />
+      </mesh>
+      <mesh position={[0, bottom - 0.004 + washH / 2, 0.0007]} renderOrder={3}>
+        <planeGeometry args={[w * 1.5, washH]} />
+        <meshBasicMaterial
+          map={uplightWash()}
+          transparent
+          opacity={COLORS.washOpacity}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+    </>
+  );
+}
+
 function CardFrame({
   b,
   card,
@@ -507,6 +659,7 @@ function CardFrame({
           roughness={0.55}
         />
       </mesh>
+      <CardUplight w={w} />
     </group>
   );
 }
@@ -520,10 +673,13 @@ function FloorLevel({
   art,
   plants,
   onGo,
+  ceiling,
 }: {
   b: Building;
   level: number;
   see: boolean;
+  /** Draw this floor's ceiling lights (hidden where the dollhouse view cuts the ceiling away). */
+  ceiling: boolean;
   bonusIds: Set<string>;
   targetIds: Set<string>;
   art?: Record<string, CardArt>;
@@ -539,6 +695,7 @@ function FloorLevel({
       <Furniture obstacles={env.obstacles} />
       <Succulents b={b} level={level} templates={plants} />
       {up && <RampDeck r={up} />}
+      {ceiling && <Downlights />}
       <Dock at={env.dock} />
       {env.cards.map((c) => (
         <CardFrame
@@ -628,15 +785,16 @@ function Route({
 // ── Marty ────────────────────────────────────────────────────────────────
 
 function Marty({
+  b,
   live,
   visible,
 }: {
+  b: Building;
   live: React.RefObject<Live>;
   visible: boolean;
 }) {
   const g = useRef<THREE.Group>(null);
   const body = useRef<THREE.Group>(null);
-  const prevLevel = useRef<number | null>(null);
   const L = DIMENSIONS.botLength;
   const Wb = DIMENSIONS.botWidth;
   useFrame(() => {
@@ -644,16 +802,10 @@ function Marty({
     if (!g.current || !body.current || !s) return;
     g.current.position.set(...toScene(s.pose, floorBase(s.level)));
     g.current.rotation.y = s.pose.heading;
-    // On a ramp (between floors), tilt nose-up when climbing and nose-down when descending.
-    const between = Math.abs(s.level - Math.round(s.level)) > 0.002;
-    const dir =
-      prevLevel.current === null ? 0 : Math.sign(s.level - prevLevel.current);
-    body.current.rotation.z = between
-      ? dir >= 0
-        ? RAMP_ANGLE
-        : -RAMP_ANGLE
-      : 0;
-    prevLevel.current = s.level;
+    // On a ramp, lie on the incline: nose up facing uphill, nose down facing downhill, rolled when side-on.
+    const tilt = tiltAt(b, s);
+    body.current.rotation.z = tilt.pitch;
+    body.current.rotation.x = -tilt.roll;
   });
   return (
     <group ref={g} visible={visible}>
@@ -791,11 +943,10 @@ function CameraRig({
       cam3.fov = fov;
       cam3.updateProjectionMatrix();
     }
-    // On a ramp, look along the incline.
-    const between = Math.abs(s.level - Math.round(s.level)) > 0.002;
+    // On a ramp, look along the incline (up it, down it, or level when side-on).
     const cam = fpvCamera(
       { ...s.pose, heading: yaw.current },
-      pitch.current + (between ? RAMP_ANGLE * 0.6 : 0),
+      pitch.current + tiltAt(b, s).pitch * 0.6,
       floorBase(s.level),
     );
     camera.position.set(...cam.position);
@@ -980,6 +1131,7 @@ const Scene = memo(function Scene({
             b={b}
             level={f.level}
             see={mode === "orbit" && f.level === viewFloor}
+            ceiling={mode === "fpv" || f.level < maxFloor}
             bonusIds={bonusIds}
             targetIds={targetIds}
             art={art}
@@ -987,8 +1139,16 @@ const Scene = memo(function Scene({
             onGo={onCardGo}
           />
         ))}
+      {/* FPV: a roof over the top floor, so it has a ceiling (and lights) like the rest. */}
+      {mode === "fpv" && (
+        <mesh position={[W / 2, floorBase(b.floors.length + 1) - SLAB / 2, -D / 2]}>
+          <boxGeometry args={[W, SLAB, D]} />
+          <meshStandardMaterial color={COLORS.slab} roughness={0.95} />
+        </mesh>
+      )}
+      <CeilingLights live={live} mode={mode} viewFloor={viewFloor} />
       <Route trip={trip} maxFloor={maxFloor} />
-      <Marty live={live} visible={mode === "orbit"} />
+      <Marty b={b} live={live} visible={mode === "orbit"} />
       <CameraRig mode={mode} live={live} b={b} viewFloor={viewFloor} />
       <Labels
         b={b}
