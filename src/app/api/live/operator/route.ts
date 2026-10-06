@@ -20,7 +20,9 @@ function parse(b: Record<string, unknown>): OperatorCommand | null {
     case "place": {
       const x = num(b.x, 0, 100);
       const y = num(b.y, 0, 100);
-      return x === null || y === null ? null : { action: "place", x, y };
+      const floor = b.floor === undefined ? undefined : num(b.floor, 1, 99);
+      if (x === null || y === null || floor === null) return null;
+      return { action: "place", x, y, ...(floor !== undefined ? { floor: Math.round(floor) } : {}) };
     }
     case "rotate": {
       const deg = num(b.deg, -360, 360);
