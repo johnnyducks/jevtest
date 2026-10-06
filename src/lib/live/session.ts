@@ -21,8 +21,9 @@ import { Game, type GameConfig, type GameSnapshot } from "../game/game.ts";
 import { Battery, BATTERY, type BatteryConfig } from "../twin/battery.ts";
 import { type Building, floorEnv, floorName, type Vec } from "../twin/environment.ts";
 import { toDegrees } from "../twin/geometry.ts";
-import { blockReason, buildGrid, connected, type Grid, isFreePoint } from "../twin/grid.ts";
+import { blockReason, buildGrid, connected, type Grid, isFreePoint, segmentFree } from "../twin/grid.ts";
 import { DEFAULT_PARAMS, type Scheduler, SimulatedMotion } from "../twin/motion.ts";
+import { type DriveCommand, isStill, normalizeDrive } from "../twin/teleop.ts";
 import { type FloorPose, type ParsedRequest, parseRequest, planRoute, type RoutePlan, type StopRef } from "../twin/routes.ts";
 import { dist } from "../units.ts";
 import type { ChatLine, ReplyResult, SayRequest } from "../voice/openai.ts";
@@ -127,9 +128,18 @@ export type OperatorCommand =
   | { action: "place"; x: number; y: number; floor?: number }
   | { action: "rotate"; deg: number }
   | { action: "speed"; mps: number }
-  | { action: "battery"; level: number };
+  | { action: "battery"; level: number }
+  /** Keyboard teleop: hold this velocity (each part -1…1). Must be repeated within TELEOP_DEADMAN_MS or Marty stops. */
+  | ({ action: "drive" } & DriveCommand);
 
 export type PostResult = { ok: true; id: string } | { ok: false; code: "bad_handle" | "bad_text" | "rate_limited" | "busy"; message: string; retryAfterMs?: number };
+
+/**
+ * Teleop deadman: a drive command holds for this long. The driver's browser
+ * repeats it while keys are held, so a closed tab, lost connection or crashed
+ * page stops Marty within this time even if no stop ever arrives.
+ */
+export const TELEOP_DEADMAN_MS = 600;
 
 /** Scheduler that never fires: motion is advanced from tick(). */
 const MANUAL: Scheduler = { request: () => 1, cancel: () => {}, now: () => 0 };
@@ -158,6 +168,8 @@ export class LiveSession {
   private seq = 0;
   /** Bumped by operator stops: a decision that started before one may not move Marty. */
   private stopToken = 0;
+  /** While driven by hand: the time the last drive command expires (see TELEOP_DEADMAN_MS). */
+  private teleopUntil = 0;
   private lastTick: number;
   private lastPost = new Map<string, number[]>();
   private listeners = new Set<(e: LiveEvent) => void>();
@@ -199,6 +211,12 @@ export class LiveSession {
     const g = this.grid(c.floor);
     if (!isFreePoint(g, c.approach)) return false;
     return connected(g, floorEnv(this.b, c.floor).dock, c.approach);
+  }
+
+  /** Being driven by hand right now. */
+  private driving(): boolean {
+    const s = this.motion.getState();
+    return s.drive !== null && s.status === "moving";
   }
 
   private where(): FloorPose {
@@ -466,10 +484,13 @@ export class LiveSession {
     for (const p of proposals) this.markViewer(p.id, { state: "handled", intent: d.intents[p.id]?.intent });
 
     // Movement only if no operator stop happened while Jev was thinking.
+    // Nor while an operator is driving him by hand: manual control always wins.
     const stoppedMeanwhile = token !== this.stopToken;
     const chosen = d.action.kind === "proposal" ? byId.get(d.action.proposalId!) : undefined;
     let actionNote = "";
-    if (stoppedMeanwhile && d.action.kind !== "stay" && d.action.kind !== "continue") {
+    if (this.driving() && d.action.kind !== "stay" && d.action.kind !== "continue") {
+      actionNote = "An operator is driving Marty by hand, so this decision was not carried out.";
+    } else if (stoppedMeanwhile && d.action.kind !== "stay" && d.action.kind !== "continue") {
       actionNote = "The operator stopped Marty while Jev was deciding, so this decision was not carried out.";
     } else if (chosen?.plan) {
       this.startTrip(chosen.handle, true, chosen.parsed.stops, chosen.plan);
@@ -810,7 +831,44 @@ export class LiveSession {
         this.battery.set(cmd.level);
         this.emitTelemetry(true);
         return { ok: true, message: `Battery set to ${Math.round(this.battery.level)}%.` };
+      case "drive":
+        return this.drive(normalizeDrive(cmd));
     }
+  }
+
+  /**
+   * Keyboard teleop. Goes through the same motion, battery and clearance as
+   * everything else: Marty can't drive into anything the planner keeps him out
+   * of, drains by the distance he actually covers, and stays on his floor
+   * (ramp lanes and openings are obstacles). Taking the wheel stops any trip,
+   * like an operator stop, and Jev's decisions aren't carried out meanwhile.
+   */
+  private drive(c: DriveCommand): { ok: boolean; message: string } {
+    const now = this.deps.now();
+    if (isStill(c)) {
+      if (!this.driving()) return { ok: true, message: "Marty wasn't being driven." };
+      this.endDrive();
+      return { ok: true, message: "Stopped." };
+    }
+    if (this.battery.dead) return { ok: false, message: "Battery empty. Place Marty on the dock first." };
+    if (Math.abs(this.level - this.floor) > 1e-3) return { ok: false, message: "Marty is on a ramp. Resume the trip to get him onto a floor first." };
+    this.stopToken++;
+    if (this.running()) this.halt("an operator took manual control");
+    const g = this.grid(this.floor);
+    // From a spot the planner would call too tight (rare), only moves that end somewhere free.
+    this.motion.drive(c, (a, b) => (isFreePoint(g, a) ? segmentFree(g, a, b) : isFreePoint(g, b)));
+    this.teleopUntil = now + TELEOP_DEADMAN_MS;
+    this.lastActivity = now;
+    this.emitTelemetry(true);
+    return { ok: true, message: "Driving." };
+  }
+
+  private endDrive() {
+    this.motion.stop();
+    this.teleopUntil = 0;
+    // Requests that waited while someone drove get another look.
+    if (this.queued.length && this.dueAt === null) this.dueAt = this.deps.now() + 500;
+    this.emitTelemetry(true);
   }
 
   reset() {
@@ -874,6 +932,13 @@ export class LiveSession {
         t.dwellLeft -= dt;
         if (t.dwellLeft <= 1e-9) this.nextLeg();
       }
+    } else if (this.driving()) {
+      if (this.battery.dead) {
+        this.endDrive();
+        this.system("Battery empty. Marty can't move until he's carried back to the dock (operator: place him on the dock) or the session is reset.", "warn");
+      } else if (now > this.teleopUntil) {
+        this.endDrive(); // deadman: the driver's browser stopped repeating the command
+      } else this.motion.advance(dt);
     }
 
     const moving = this.motion.getState().status === "moving";
@@ -933,6 +998,7 @@ export class LiveSession {
       floor: this.floor,
       level: Math.round(this.level * 1000) / 1000,
       status: t ? "moving" : s.status,
+      manual: this.driving(),
       speed: this.motion.getSpeed(),
       battery: { level: Math.round(this.battery.level * 10) / 10, range: Math.round(this.battery.range * 100) / 100, reserve: this.battery.config.reserve, charging: this.charging, dead: this.battery.dead },
       trip: t ? { remainingMeters: Math.round(rem.meters * 1000) / 1000, etaSeconds: Math.round(rem.seconds) } : null,

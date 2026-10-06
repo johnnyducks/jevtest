@@ -34,6 +34,12 @@ function parse(b: Record<string, unknown>): OperatorCommand | null {
       const level = num(b.level, 0, 100);
       return level === null ? null : { action: "battery", level };
     }
+    case "drive": {
+      const forward = num(b.forward, -1, 1);
+      const strafe = num(b.strafe, -1, 1);
+      const rotate = num(b.rotate, -1, 1);
+      return forward === null || strafe === null || rotate === null ? null : { action: "drive", forward, strafe, rotate };
+    }
     default:
       return null;
   }

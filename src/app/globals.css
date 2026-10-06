@@ -4589,3 +4589,141 @@ pre.code {
   color: var(--accent);
   border-color: var(--accent-line);
 }
+
+/* Keyboard driving overlay (FPV): display only, the keyboard does the driving. */
+.teleop {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 6;
+  display: grid;
+  gap: 6px;
+  width: 124px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: rgb(var(--ink) / 0.82);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  user-select: none;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.teleop.locked .teleop-keys,
+.teleop.locked .teleop-mods {
+  opacity: 0.45;
+}
+.teleop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  text-transform: uppercase;
+  font-size: 9.5px;
+  color: var(--dim);
+}
+.teleop-note {
+  font-size: 9.5px;
+  line-height: 1.3;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.teleop-state {
+  padding: 1px 6px;
+  white-space: nowrap;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.teleop-state.drive {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.teleop-state.precise {
+  color: var(--sim);
+  border-color: rgba(245, 165, 36, 0.4);
+  background: var(--sim-soft);
+}
+.teleop-state.stop {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.45);
+  background: var(--danger-soft);
+}
+.teleop-keys,
+.teleop-row,
+.teleop-mods {
+  display: flex;
+  gap: 4px;
+}
+.teleop-row {
+  justify-content: center;
+}
+.teleop-keys {
+  flex-direction: column;
+}
+.teleop kbd {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  background: var(--raise);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  transition: background 0.08s, color 0.08s, border-color 0.08s, transform 0.08s;
+}
+.teleop kbd i {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-style: normal;
+  font-size: 8px;
+  font-weight: 400;
+  color: var(--dim);
+}
+.teleop kbd.wide {
+  width: auto;
+  flex: 1;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.teleop kbd.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+  transform: translateY(1px);
+  box-shadow: 0 0 12px rgb(var(--glow) / 0.25);
+}
+.teleop kbd.on i {
+  color: var(--accent);
+}
+.teleop kbd.on.precise {
+  background: var(--sim-soft);
+  border-color: rgba(245, 165, 36, 0.45);
+  color: var(--sim);
+  box-shadow: none;
+}
+.teleop kbd.on.stop {
+  background: var(--danger-soft);
+  border-color: rgba(248, 113, 113, 0.5);
+  color: var(--danger);
+  box-shadow: none;
+}
+/* No keyboard on phones and tablets: keep the camera clear. */
+@media (hover: none) and (pointer: coarse) {
+  .teleop {
+    display: none;
+  }
+}
