@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { BUILDING, DIMENSIONS } from "../environment.ts";
+import { fitsLane, floorAt, rampSpot, rampTilt } from "../ramps.ts";
 import { driveStep, keysToDrive, normalizeDrive, PRECISION } from "../teleop.ts";
 
 const open = () => true;
@@ -86,4 +88,34 @@ test("driveStep: blocked moves slide along the free axis, or stay put", () => {
   assert.equal(q.x, 1);
   assert.equal(q.y, 1);
   near(q.heading, 0.5);
+});
+
+const r12 = BUILDING.ramps.find((r) => r.from === 1)!; // south wall, climbing east
+
+test("rampSpot: height follows the incline; each floor only sees its own end of a ramp", () => {
+  const mid = { x: (r12.foot.x + r12.top.x) / 2, y: r12.foot.y };
+  near(rampSpot(BUILDING, 1, r12.foot)!.level, 1);
+  near(rampSpot(BUILDING, 1.4, mid)!.level, 1.5);
+  near(rampSpot(BUILDING, 2, r12.top)!.level, 2);
+  assert.ok(rampSpot(BUILDING, 1, r12.entry), "floor 1: the line-up zone counts");
+  assert.equal(rampSpot(BUILDING, 2, r12.entry), null, "floor 2 above floor 1's line-up zone is just floor");
+  assert.equal(rampSpot(BUILDING, 1, r12.exit), null, "floor 1 under the top's line-up zone is just floor");
+  assert.equal(rampSpot(BUILDING, 1.5, { x: mid.x, y: r12.lane.y + r12.lane.h + 0.01 }), null, "beside the lane");
+  assert.equal(floorAt(r12, 1.49), 1);
+  assert.equal(floorAt(r12, 1.5), 2);
+});
+
+test("fitsLane: a 4 in robot fits the 7.5 in lane at any heading when centred, not against the rail", () => {
+  for (const h of [0, 0.4, Math.PI / 4, Math.PI / 2, 2, Math.PI]) assert.ok(fitsLane(r12, { ...r12.foot, heading: h }), `heading ${h}`);
+  const offset = { x: r12.foot.x, y: r12.foot.y + 0.03, heading: 0 };
+  assert.ok(fitsLane(r12, offset), "side-shifted, facing along the lane");
+  assert.equal(fitsLane(r12, { ...offset, heading: Math.PI / 4 }), false, "side-shifted and turned: would hit the rail");
+});
+
+test("rampTilt: nose up facing uphill, down facing downhill, rolled side-on", () => {
+  const a = Math.atan2(DIMENSIONS.floorHeight, DIMENSIONS.rampLength);
+  near(rampTilt(r12, 0).pitch, a);
+  near(rampTilt(r12, Math.PI).pitch, -a);
+  near(rampTilt(r12, Math.PI / 2).roll, a, "facing north, uphill (east) is on his right");
+  assert.ok(Math.abs(rampTilt(r12, Math.PI / 2).pitch) < 1e-9);
 });

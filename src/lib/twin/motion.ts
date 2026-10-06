@@ -41,7 +41,7 @@ export interface MotionCommands {
   /** Start following `path` for `missionId`, then turn to `face` if given. Cancels any previous motion. */
   follow(path: Vec[], missionId: string, face?: number | null): void;
   /** Drive by velocity (forward / strafe / rotate) until stopped or given a new command. Cancels any route. */
-  drive(cmd: DriveCommand, free: (a: Vec, b: Vec) => boolean): void;
+  drive(cmd: DriveCommand, free: (a: Pose, b: Pose) => boolean): void;
   /** Halt immediately. Leaves Marty where it is. */
   stop(): void;
   /** Place Marty (only valid while not moving). */
@@ -176,7 +176,7 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
   }
 
   /** Teleop: hold a velocity command. A still command stops Marty. */
-  drive(cmd: DriveCommand, free: (a: Vec, b: Vec) => boolean) {
+  drive(cmd: DriveCommand, free: (a: Pose, b: Pose) => boolean) {
     if (isStill(cmd)) {
       this.stop();
       return;
@@ -208,7 +208,7 @@ export class SimulatedMotion implements PoseSource, MotionCommands {
   }
 
   /** Where Marty fits while driven by hand (set with each drive command). */
-  private free: (a: Vec, b: Vec) => boolean = () => true;
+  private free: (a: Pose, b: Pose) => boolean = () => true;
 
   /** Advance the simulation by `dt` seconds (also used directly by tests). */
   advance(dt: number) {

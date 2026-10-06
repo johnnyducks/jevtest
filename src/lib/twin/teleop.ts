@@ -56,24 +56,27 @@ const scaleDrive = (c: DriveCommand, s: number): DriveCommand => ({ forward: c.f
 
 /**
  * Advance a pose by `dt` seconds under a drive command. `speed` (m/s) and
- * `turnRate` (rad/s) are full scale. `free` says whether Marty fits at a point
- * along the way; a blocked move tries sliding along each world axis instead,
- * so brushing a wall glides along it rather than sticking. Turning in place
- * is always allowed (the planner's clearance already covers his turning circle).
+ * `turnRate` (rad/s) are full scale. `free` says whether Marty may move from
+ * one pose to the next (position and heading: on a narrow ramp the heading
+ * decides whether he fits). A blocked move tries sliding along each world axis
+ * instead, so brushing a wall glides along it rather than sticking; if even
+ * that is blocked he turns in place, or translates without turning, or stays put.
  */
-export function driveStep(pose: Pose, c: DriveCommand, dt: number, speed: number, turnRate: number, free: (a: Vec, b: Vec) => boolean): Pose {
+export function driveStep(pose: Pose, c: DriveCommand, dt: number, speed: number, turnRate: number, free: (a: Pose, b: Pose) => boolean): Pose {
   const h = pose.heading;
   // Body frame → world: forward along the heading, right is a quarter turn clockwise from it.
   const vx = (Math.cos(h) * c.forward + Math.sin(h) * c.strafe) * speed;
   const vy = (Math.sin(h) * c.forward - Math.cos(h) * c.strafe) * speed;
-  const from = { x: pose.x, y: pose.y };
-  let to = { x: pose.x + vx * dt, y: pose.y + vy * dt };
-  if ((vx || vy) && !free(from, to)) {
-    const alongX = { x: to.x, y: from.y };
-    const alongY = { x: from.x, y: to.y };
-    // Prefer the slide that keeps more of the intended motion.
-    const tries = Math.abs(vx) >= Math.abs(vy) ? [alongX, alongY] : [alongY, alongX];
-    to = tries.find((p) => (p.x !== from.x || p.y !== from.y) && free(from, p)) ?? from;
-  }
-  return { x: to.x, y: to.y, heading: wrapAngle(h + c.rotate * turnRate * dt) };
+  const turned = wrapAngle(h + c.rotate * turnRate * dt);
+  const full = { x: pose.x + vx * dt, y: pose.y + vy * dt };
+  const alongX = { x: full.x, y: pose.y };
+  const alongY = { x: pose.x, y: full.y };
+  // Prefer the slide that keeps more of the intended motion.
+  const slides = Math.abs(vx) >= Math.abs(vy) ? [alongX, alongY] : [alongY, alongX];
+  const moves: Vec[] = vx || vy ? [full, ...slides] : [];
+  const tries: Pose[] = [
+    ...moves.map((m) => ({ ...m, heading: turned })),
+    ...(turned !== h ? [{ x: pose.x, y: pose.y, heading: turned }, ...moves.map((m) => ({ ...m, heading: h }))] : []),
+  ];
+  return tries.find((t) => (t.x !== pose.x || t.y !== pose.y || t.heading !== h) && free(pose, t)) ?? pose;
 }

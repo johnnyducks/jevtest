@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { floorEnv } from "../../twin/environment.ts";
+import { DIMENSIONS, floorEnv } from "../../twin/environment.ts";
+import { fitsLane, rampSpot } from "../../twin/ramps.ts";
 import { buildGrid, isFreePoint } from "../../twin/grid.ts";
 import { keysToDrive } from "../../twin/teleop.ts";
 import { TELEOP_DEADMAN_MS } from "../session.ts";
@@ -115,7 +116,6 @@ test("driving can't go through walls or furniture: Marty slides along and stays 
     await d.hold(4, ...keys);
     assert.ok(isFreePoint(grid, d.pose()), `${keys.join("+")} ended at a free spot`);
   }
-  assert.equal(d.s.snapshot().telemetry.floor, 1, "ramps are off limits: he stays on his floor");
 });
 
 test("taking the wheel stops a trip like an operator stop, and Resume picks it up again", async () => {
@@ -174,4 +174,109 @@ test("can't drive on an empty battery", async () => {
   const r = d.press("KeyW");
   assert.equal(r.ok, false);
   assert.match(r.message, /Battery empty/);
+});
+
+// ── Ramps ──────────────────────────────────────────────────────────────────
+// Ramp 1→2 runs along floor 1's south wall, climbing east; ramp 2→3 along floor 2's north wall, climbing west.
+const r12 = building.ramps.find((r) => r.from === 1)!;
+const r23 = building.ramps.find((r) => r.from === 2)!;
+
+test("W drives up the ramp to the next floor, climbing costs extra battery", async () => {
+  const d = driver();
+  assert.equal(d.s.operator({ action: "place", x: r12.entry.x, y: r12.entry.y }).ok, true);
+  let halfway = 0;
+  // Up the incline, over the top and onto floor 2.
+  for (let i = 0; i < 16 && d.pose().x < r12.exit.x; i++) {
+    await d.hold(1, "KeyW");
+    const t = d.s.snapshot().telemetry;
+    if (t.level > 1 && t.level < 2) halfway++;
+  }
+  d.release();
+  const t = d.s.snapshot().telemetry;
+  assert.ok(halfway > 3, "spent several seconds between floors");
+  assert.equal(t.floor, 2);
+  assert.equal(t.level, 2);
+  assert.ok(d.pose().x > r12.top.x, "past the top, on floor 2");
+  // Flat driving costs 2.5%/m ÷ 100 here; climbing adds 2%/m ÷ 100 over the 64 in incline.
+  const flat = t.metersDriven * 0.025;
+  const used = 100 - t.battery.level;
+  assert.ok(used > flat + DIMENSIONS.rampLength * 0.02 * 0.8, `used ${used}%, flat would be ${flat}%`);
+});
+
+test("and back down: facing downhill W returns to floor 1; facing uphill S backs down", async () => {
+  for (const [deg, key] of [[180, "KeyW"], [0, "KeyS"]] as const) {
+    const d = driver();
+    assert.equal(d.s.operator({ action: "place", x: r12.exit.x, y: r12.exit.y, floor: 2 }).ok, true);
+    d.s.operator({ action: "rotate", deg: deg - (d.pose().heading * 180) / Math.PI });
+    for (let i = 0; i < 16 && d.pose().x > r12.entry.x; i++) await d.hold(1, key);
+    d.release();
+    const t = d.s.snapshot().telemetry;
+    assert.equal(t.floor, 1, key);
+    assert.equal(t.level, 1, key);
+  }
+});
+
+test("on a ramp Marty stays between the wall and the rail, whatever he does", async () => {
+  const d = driver();
+  d.s.operator({ action: "place", x: r12.entry.x, y: r12.entry.y });
+  await d.hold(4, "KeyW");
+  const mid = d.s.snapshot().telemetry.level;
+  assert.ok(mid > 1.1 && mid < 1.9, `part-way up (${mid})`);
+  for (const keys of [["KeyD"], ["KeyA"], ["KeyQ"], ["KeyA", "KeyE"], ["KeyD", "KeyQ"], ["KeyE"]]) {
+    await d.hold(1.5, ...keys);
+    const spot = rampSpot(building, d.s.snapshot().telemetry.level, d.pose());
+    assert.ok(spot && spot.ramp === r12, `${keys.join("+")}: still on the ramp`);
+    assert.ok(fitsLane(r12, d.pose()), `${keys.join("+")}: inside the lane`);
+  }
+  const before = { ...d.pose() };
+  await d.hold(1, "KeyQ");
+  assert.notEqual(d.pose().heading, before.heading, "can turn on the ramp");
+});
+
+test("no shortcuts: can't get onto a ramp from the side, under it, or into the opening from above", async () => {
+  const d = driver();
+  // Floor 1, just north of the ramp lane's middle, strafing south (facing east, D is south).
+  d.s.operator({ action: "place", x: (r12.foot.x + r12.top.x) / 2, y: r12.lane.y + r12.lane.h + 0.12 });
+  await d.hold(3, "KeyD");
+  assert.equal(d.s.snapshot().telemetry.level, 1);
+  assert.ok(d.pose().y > r12.lane.y + r12.lane.h, "stopped short of the lane");
+  // Floor 2: the opening where ramp 1→2 arrives is a hole; and ramp 2→3 can't be boarded sideways either.
+  const e = driver();
+  assert.equal(e.s.operator({ action: "place", x: 1.4, y: 0.7, floor: 2 }).ok, true);
+  await e.hold(4, "KeyD"); // south, toward the opening
+  assert.equal(e.s.snapshot().telemetry.level, 2);
+  assert.ok(e.pose().y > r12.lane.y + r12.lane.h);
+  await e.hold(8, "KeyA"); // north, toward ramp 2→3's lane
+  assert.equal(e.s.snapshot().telemetry.level, 2);
+  assert.ok(e.pose().y < r23.lane.y);
+});
+
+test("left part-way up a ramp, Marty still takes trips: he drives off the nearer end first", async () => {
+  const d = driver();
+  d.s.operator({ action: "place", x: r12.entry.x, y: r12.entry.y });
+  await d.hold(5, "KeyW");
+  d.release();
+  const level = d.s.snapshot().telemetry.level;
+  assert.ok(level > 1.2 && level < 1.5, `stopped at ${level}`);
+  d.s.post("amy", "go to griffey"); // on floor 1
+  await d.run(1.2);
+  const trip = d.s.snapshot().trip!;
+  assert.equal(trip.status, "running", trip.summary);
+  assert.ok(trip.legs[0].ramp, "first leg: off the ramp");
+  await d.run(90);
+  assert.equal(d.s.snapshot().trip!.status, "done");
+  assert.equal(d.s.snapshot().telemetry.floor, 1);
+  assert.equal(d.s.snapshot().telemetry.level, 1);
+});
+
+test("operator stop part-way up a planned climb, then Resume, still finishes the climb", async () => {
+  const d = driver();
+  d.s.post("amy", "go upstairs");
+  await d.run(1.2);
+  for (let i = 0; i < 400 && !(d.s.snapshot().telemetry.level > 1.3); i++) await d.run(0.1);
+  d.s.operator({ action: "stop" });
+  assert.equal(d.s.operator({ action: "resume" }).ok, true);
+  await d.run(60);
+  assert.equal(d.s.snapshot().trip!.status, "done");
+  assert.equal(d.s.snapshot().telemetry.floor, 2);
 });
