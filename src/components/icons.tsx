@@ -2,14 +2,16 @@ import type { SVGProps } from "react";
 
 const base = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
-export const Logo = (p: SVGProps<SVGSVGElement>) => (
-  <svg {...base} {...p} stroke="var(--accent)">
-    <path d="M12 3v6" />
-    <path d="M12 9 6 15" />
-    <path d="M12 9l6 6" />
-    <circle cx="6" cy="18" r="2.5" />
-    <circle cx="18" cy="18" r="2.5" />
-    <circle cx="12" cy="3.5" r="1" fill="var(--accent)" />
+export const Sun = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+  </svg>
+);
+
+export const Moon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
   </svg>
 );
 
