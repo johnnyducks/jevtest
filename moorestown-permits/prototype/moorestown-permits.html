@@ -1,0 +1,1038 @@
+<title>Moorestown Permits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single calm column (max 1040px) under a sticky civic header; yellow marks only "where you are" and "what to do next". */
+:root{
+  --bg:#F7F7F4; --surface:#FFFFFF; --wash:#EFEEE9; --line:#DFDED7;
+  --ink:#1B1B19; --ink-2:#4F4F49; --ink-3:#85847C;
+  --accent:#F4C400; --accent-ink:#6E5300; --accent-wash:#FFF5C7; --on-accent:#1B1B19;
+  --ok:#2E7A4C; --ok-wash:#E4F2E9; --bad:#A8322A; --bad-wash:#F8E6E4;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#131312; --surface:#1B1B19; --wash:#232321; --line:#2F2F2C;
+  --ink:#EDEDE7; --ink-2:#B4B3AB; --ink-3:#7E7D76;
+  --accent:#F4C400; --accent-ink:#F4C400; --accent-wash:#2C260E; --on-accent:#1B1B19;
+  --ok:#74C998; --ok-wash:#18291F; --bad:#F08A80; --bad-wash:#311B19; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131312; --surface:#1B1B19; --wash:#232321; --line:#2F2F2C;
+  --ink:#EDEDE7; --ink-2:#B4B3AB; --ink-3:#7E7D76;
+  --accent:#F4C400; --accent-ink:#F4C400; --accent-wash:#2C260E; --on-accent:#1B1B19;
+  --ok:#74C998; --ok-wash:#18291F; --bad:#F08A80; --bad-wash:#311B19; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 16px/1.6 var(--body);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}
+a:hover{text-decoration-color:var(--ink)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+h1,h2,h3{font-family:var(--display);font-stretch:85%;letter-spacing:-.01em;line-height:1.1;text-wrap:balance;margin:0}
+h1{font-size:clamp(2.1rem,5vw,3.3rem);font-weight:750}
+h2{font-size:clamp(1.45rem,3vw,1.9rem);font-weight:700}
+h3{font-size:1.15rem;font-weight:650}
+p{margin:0}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:20px}
+.eyebrow{font:500 .75rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.muted{color:var(--ink-2)}
+.small{font-size:.875rem}
+.mono{font-family:var(--mono)}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+
+/* header */
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:20px;min-height:60px;flex-wrap:wrap;padding-block:8px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:var(--display);font-weight:750;font-stretch:80%;font-size:1.15rem;letter-spacing:.005em}
+.brand .mark{width:26px;height:26px;border-radius:4px;background:var(--accent);display:grid;place-items:center}
+.brand .mark svg{width:16px;height:16px}
+.brand small{display:block;font:500 .66rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
+nav.main{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+nav.main a{text-decoration:none;padding:7px 11px;border-radius:var(--r);font-size:.92rem;font-weight:500;color:var(--ink-2)}
+nav.main a:hover{background:var(--wash);color:var(--ink)}
+nav.main a[aria-current="page"]{color:var(--ink);box-shadow:inset 0 -3px 0 var(--accent);border-radius:0}
+.modeswitch{display:flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:var(--surface)}
+.modeswitch button{border:0;background:none;font:500 .8rem var(--body);padding:5px 12px;border-radius:999px;color:var(--ink-2);cursor:pointer}
+.modeswitch button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+main{padding-block:36px 56px}
+section.view{display:none}
+section.view.on{display:block}
+
+/* buttons & form */
+.btn{display:inline-flex;align-items:center;gap:8px;font:600 .95rem var(--body);border-radius:var(--r);padding:11px 18px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;text-decoration:none;line-height:1.2}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(.95)}
+.btn.dark{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.btn.ghost{background:none;border-color:transparent;padding-inline:8px;color:var(--ink-2)}
+.btn.ghost:hover{color:var(--ink);background:var(--wash)}
+.btn.sm{padding:7px 12px;font-size:.85rem}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+label.f{display:flex;flex-direction:column;gap:6px;font-weight:500;font-size:.92rem;min-width:0}
+label.f .hint{font-weight:400;color:var(--ink-3);font-size:.82rem}
+input[type=text],input[type=email],input[type=tel],input[type=number],input[type=search],select,textarea{font:400 1rem var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;width:100%}
+textarea{min-height:96px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px}
+.note{background:var(--accent-wash);border-radius:var(--r);padding:12px 14px;font-size:.92rem}
+.note.plain{background:var(--wash)}
+.pill{display:inline-flex;align-items:center;gap:6px;font:500 .74rem/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:5px 8px;border-radius:4px;background:var(--wash);color:var(--ink-2);white-space:nowrap}
+.pill.y{background:var(--accent);color:var(--on-accent)}
+.pill.ok{background:var(--ok-wash);color:var(--ok)}
+.pill.bad{background:var(--bad-wash);color:var(--bad)}
+.pill.line{background:none;border:1px solid var(--line)}
+
+/* HOME */
+.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:40px;align-items:end;padding-bottom:40px;border-bottom:1px solid var(--line)}
+.hero p.lede{font-size:1.15rem;color:var(--ink-2);max-width:34em;margin-top:16px}
+.hero .row{margin-top:26px}
+.placard{background:var(--accent);color:var(--on-accent);border-radius:8px;padding:22px 22px 18px;font-family:var(--mono);font-size:.82rem;line-height:1.5;position:relative;max-width:360px;justify-self:end;width:100%}
+.placard .ptitle{font:800 1.5rem/1 var(--display);font-stretch:75%;letter-spacing:.02em;text-transform:uppercase;margin-bottom:12px}
+.placard dl{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:0}
+.placard dt{opacity:.7}
+.placard dd{margin:0;font-weight:500}
+.placard .foot{margin-top:14px;padding-top:10px;border-top:1px dashed rgba(0,0,0,.35);font-size:.72rem;opacity:.8}
+.home-sec{padding-block:44px;border-bottom:1px solid var(--line)}
+.home-sec:last-of-type{border-bottom:0}
+.sechead{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.sechead p{max-width:36em}
+
+.path{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.path li{border-bottom:1px solid var(--line)}
+.path button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:16px;align-items:center;width:100%;padding:16px 4px;cursor:pointer}
+.path button:focus-visible{outline:2px solid var(--accent)}
+.path .n{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--ink);display:grid;place-items:center;font:600 .82rem var(--mono)}
+.path li.open .n{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.path .t{font-weight:600}
+.path .t span{display:block;font-weight:400;color:var(--ink-2);font-size:.92rem}
+.path .body{display:none;padding:0 4px 20px 64px;color:var(--ink-2);max-width:46em}
+.path li.open .body{display:block}
+.path .body ul{margin:8px 0 0;padding-left:18px}
+
+.scale{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.scale > div{padding:16px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.scale > div:last-child{border-right:0}
+.scale .lvl{height:6px;border-radius:3px;background:var(--wash);overflow:hidden}
+.scale .lvl i{display:block;height:100%;background:var(--accent)}
+.scale h3{font-size:1rem}
+.scale .cite{font:400 .72rem var(--mono);color:var(--ink-3)}
+.scale .what{font-size:.86rem;color:var(--ink-2)}
+.scale .need{font-size:.8rem;font-weight:600;margin-top:auto}
+
+.ask{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:32px;align-items:start}
+.ask form{display:flex;gap:8px}
+.ask .answer{margin-top:14px;white-space:pre-wrap;color:var(--ink);font-size:.95rem;min-height:1em}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font:400 .85rem var(--body);color:var(--ink-2);cursor:pointer}
+.chip:hover{border-color:var(--ink-3);color:var(--ink)}
+
+details.faq{border-bottom:1px solid var(--line);padding-block:4px}
+details.faq summary{cursor:pointer;list-style:none;padding:14px 0;font-weight:600;display:flex;justify-content:space-between;gap:16px}
+details.faq summary::-webkit-details-marker{display:none}
+details.faq summary::after{content:"+";font:400 1.3rem/1 var(--mono);color:var(--ink-3)}
+details.faq[open] summary::after{content:"–"}
+details.faq p{padding-bottom:16px;color:var(--ink-2);max-width:46em}
+
+/* WIZARD */
+.wiz{display:grid;grid-template-columns:220px minmax(0,1fr);gap:40px;align-items:start}
+.steps{list-style:none;margin:0;padding:0;position:sticky;top:90px;display:flex;flex-direction:column;gap:2px}
+.steps li{display:flex;gap:12px;align-items:center;padding:9px 10px;border-radius:var(--r);font-size:.92rem;color:var(--ink-3)}
+.steps li .d{width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center;font:600 .7rem var(--mono);flex:none}
+.steps li.done{color:var(--ink-2)}
+.steps li.done .d{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.steps li.cur{color:var(--ink);font-weight:600;background:var(--surface)}
+.steps li.cur .d{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.wstep{display:none}
+.wstep.on{display:flex;flex-direction:column;gap:24px}
+.wstep > header p{margin-top:8px;max-width:40em}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.pcard{position:relative;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:14px 14px 14px 44px;cursor:pointer;font:inherit;color:inherit;display:flex;flex-direction:column;gap:2px}
+.pcard:hover{border-color:var(--ink-3)}
+.pcard b{font-weight:600;font-size:.95rem}
+.pcard small{color:var(--ink-3);font-size:.8rem;line-height:1.35}
+.pcard::before{content:"";position:absolute;left:14px;top:16px;width:18px;height:18px;border:1.5px solid var(--ink-3);border-radius:4px}
+.pcard[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.pcard[aria-pressed="true"]::before{background:var(--accent);border-color:var(--accent)}
+.pcard[aria-pressed="true"]::after{content:"";position:absolute;left:20px;top:19px;width:5px;height:9px;border:solid var(--on-accent);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.q{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:16px 0;border-bottom:1px solid var(--line)}
+.q:first-child{border-top:1px solid var(--line)}
+.q .qt{font-weight:500}
+.q .qt span{display:block;color:var(--ink-3);font-size:.84rem;font-weight:400;margin-top:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:8px 14px;font:500 .88rem var(--body);color:var(--ink-2);cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.wnav{display:flex;justify-content:space-between;gap:12px;padding-top:8px;flex-wrap:wrap}
+.err{color:var(--bad);font-size:.88rem}
+
+/* plan */
+.plan-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:start}
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.verdict > div{background:var(--surface);padding:16px}
+.verdict .k{font:500 .7rem var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3)}
+.verdict .v{font:700 1.2rem/1.2 var(--display);font-stretch:85%;margin-top:6px}
+.verdict .s{font-size:.82rem;color:var(--ink-2);margin-top:4px}
+.disc{display:flex;flex-wrap:wrap;gap:8px}
+.disc .pill{font-size:.78rem;padding:7px 10px}
+.checklist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.checklist li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);align-items:start}
+.checklist .box{width:20px;height:20px;border:1.5px solid var(--ink-3);border-radius:4px;margin-top:2px;display:grid;place-items:center;cursor:pointer;background:var(--surface);padding:0}
+.checklist .box[aria-checked="true"]{background:var(--ink);border-color:var(--ink)}
+.checklist .box[aria-checked="true"]::after{content:"";width:5px;height:9px;border:solid var(--bg);border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.checklist .it b{font-weight:600}
+.checklist .it p{color:var(--ink-2);font-size:.88rem;margin-top:2px}
+.checklist .it .files{font:400 .78rem var(--mono);color:var(--ink-3);margin-top:4px;word-break:break-all}
+.checklist .act{display:flex;gap:6px;align-items:center}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tl li{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:12px;padding:8px 0;align-items:baseline;font-size:.93rem}
+.tl li::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--line);justify-self:center;transform:translateY(-1px)}
+.tl li.y::before{background:var(--accent)}
+.tl .dur{font:400 .8rem var(--mono);color:var(--ink-3)}
+.two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:28px;align-items:start}
+
+/* TRACK */
+.appcard{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.appcard .hd{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px 20px;border-bottom:1px solid var(--line)}
+.ref{font:500 .95rem var(--mono);background:var(--accent);color:var(--on-accent);padding:4px 8px;border-radius:4px}
+.progress{display:flex;gap:0;padding:20px;overflow-x:auto}
+.progress > div{flex:1 1 0;min-width:96px;display:flex;flex-direction:column;gap:8px;font-size:.78rem;color:var(--ink-3)}
+.progress .bar{height:4px;background:var(--wash);margin-right:4px;border-radius:2px}
+.progress .done .bar{background:var(--ink)}
+.progress .cur .bar{background:var(--accent)}
+.progress .cur{color:var(--ink);font-weight:600}
+.progress .done{color:var(--ink-2)}
+.msgs{padding:0 20px 20px;display:flex;flex-direction:column;gap:10px}
+.msg{border-left:3px solid var(--accent);padding:4px 0 4px 12px;font-size:.92rem}
+.msg .meta{font:400 .74rem var(--mono);color:var(--ink-3)}
+.empty{border:1.5px dashed var(--line);border-radius:10px;padding:36px 24px;text-align:center;color:var(--ink-2);display:flex;flex-direction:column;gap:12px;align-items:center}
+
+/* RESOURCES */
+.res{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:32px 40px}
+.res h3{padding-bottom:10px;border-bottom:2px solid var(--ink);margin-bottom:4px}
+.res ul{list-style:none;margin:0;padding:0}
+.res li{border-bottom:1px solid var(--line)}
+.res li a{display:flex;justify-content:space-between;gap:12px;padding:11px 0;text-decoration:none;font-size:.94rem}
+.res li a:hover{color:var(--accent-ink)}
+.res li a span.k{font:400 .72rem var(--mono);color:var(--ink-3);white-space:nowrap;padding-top:3px}
+.staff{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:0 28px}
+.staff > div{padding:12px 0;border-bottom:1px solid var(--line)}
+.staff b{display:block;font-weight:600}
+.staff span{display:block;font-size:.85rem;color:var(--ink-2)}
+.staff code{font:400 .8rem var(--mono);color:var(--ink-3);user-select:all}
+.office{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px}
+.office .k{font:500 .7rem var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);margin-bottom:6px}
+
+/* STAFF CONSOLE */
+.console{display:grid;grid-template-columns:340px minmax(0,1fr);gap:24px;align-items:start}
+.queue{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.queue .qh{padding:12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.queue .filters{display:flex;gap:6px;flex-wrap:wrap}
+.queue .filters button{border:1px solid var(--line);background:none;border-radius:999px;padding:4px 10px;font:500 .78rem var(--body);color:var(--ink-2);cursor:pointer}
+.queue .filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.qlist{max-height:68vh;overflow-y:auto}
+.qitem{all:unset;box-sizing:border-box;display:grid;grid-template-columns:4px minmax(0,1fr);gap:0 12px;width:100%;padding:12px 14px 12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.qitem:hover{background:var(--wash)}
+.qitem[aria-current="true"]{background:var(--wash)}
+.qitem .stripe{background:transparent}
+.qitem[aria-current="true"] .stripe{background:var(--accent)}
+.qitem .l1{display:flex;justify-content:space-between;gap:8px;font:500 .8rem var(--mono)}
+.qitem .l2{font-weight:600;font-size:.92rem;margin-top:2px}
+.qitem .l3{font-size:.8rem;color:var(--ink-3);display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
+.detail{display:flex;flex-direction:column;gap:20px}
+.kv{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 16px;font-size:.92rem;margin:0}
+.kv dt{color:var(--ink-3)}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.ai{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.ai .aih{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ai .aib{padding:18px;display:flex;flex-direction:column;gap:16px}
+.meter{display:flex;align-items:center;gap:12px}
+.meter .track{flex:1;height:8px;background:var(--wash);border-radius:4px;overflow:hidden}
+.meter .track i{display:block;height:100%;background:var(--ink)}
+.meter b{font:600 1.4rem var(--display);font-variant-numeric:tabular-nums}
+.ai ul{margin:0;padding-left:18px;font-size:.92rem}
+.ai ul li{margin-bottom:4px}
+.draft{background:var(--wash);border-radius:var(--r);padding:12px 14px;white-space:pre-wrap;font-size:.9rem}
+.spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--ink);border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.banner{font-size:.85rem;padding:10px 14px;border-radius:var(--r);background:var(--wash);color:var(--ink-2);margin-bottom:20px}
+
+footer.foot{border-top:1px solid var(--line);padding-block:28px 40px;font-size:.85rem;color:var(--ink-2)}
+footer.foot .wrap{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
+footer .demo{font-size:.76rem;color:var(--ink-3);max-width:34em}
+footer .demo sup{color:var(--accent-ink)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);font-size:.9rem;z-index:50;max-width:calc(100% - 32px)}
+
+@media (max-width:820px){
+  .hero{grid-template-columns:1fr}
+  .placard{justify-self:start}
+  .scale{grid-template-columns:1fr}
+  .scale > div{border-right:0;border-bottom:1px solid var(--line)}
+  .ask,.two,.console{grid-template-columns:1fr}
+  .wiz{grid-template-columns:1fr;gap:20px}
+  .steps{position:static;flex-direction:row;overflow-x:auto;gap:4px}
+  .steps li{white-space:nowrap;padding:6px 8px}
+  .steps li .lbl{display:none}
+  .steps li.cur .lbl{display:inline}
+  .plan-head{grid-template-columns:1fr}
+  .kv{grid-template-columns:1fr;gap:2px}
+  .kv dd{margin-bottom:8px}
+  .q{grid-template-columns:1fr}
+  nav.main{margin-left:0;width:100%;order:3}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#home" data-go="home">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 14V7l6-5 6 5v7h-4v-4H6v4z" fill="#1B1B19"/></svg></span>
+      <span>Moorestown Permits<small>Construction Office</small></span>
+    </a>
+    <nav class="main" id="nav-home">
+      <a href="#home" data-go="home">Guide</a>
+      <a href="#start" data-go="start">Plan my project</a>
+      <a href="#track" data-go="track">My applications</a>
+      <a href="#resources" data-go="resources">Forms &amp; contacts</a>
+    </nav>
+    <div class="modeswitch" role="group" aria-label="Portal view">
+      <button type="button" id="m-home" aria-pressed="true">Homeowner</button>
+      <button type="button" id="m-staff" aria-pressed="false">Staff</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ HOME ============ -->
+<section class="view" id="v-home">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Township of Moorestown · Construction Office</div>
+      <h1 style="margin-top:14px">Your home project, permitted without the guesswork.</h1>
+      <p class="lede">Answer a few questions about what you're planning. We'll show you which forms, plans and inspections you need, and help you send in a complete application the first time.</p>
+      <div class="row">
+        <a class="btn primary" href="#start" data-go="start">Plan my project</a>
+        <a class="btn" href="#track" data-go="track">Check an application</a>
+      </div>
+    </div>
+    <div class="placard" aria-label="Example permit placard">
+      <div class="ptitle">Construction Permit</div>
+      <dl>
+        <dt>Permit</dt><dd>Posted on site</dd>
+        <dt>Code</dt><dd>N.J.A.C. 5:23 (UCC)</dd>
+        <dt>Review</dt><dd>Up to 20 business days</dd>
+        <dt>Closes</dt><dd>When a certificate is issued</dd>
+      </dl>
+      <div class="foot">Keep it in a front window while work is under way. Approved plans stay on site for every inspection.</div>
+    </div>
+  </div>
+
+  <div class="home-sec">
+    <div class="sechead">
+      <div>
+        <div class="eyebrow">The path</div>
+        <h2 style="margin-top:8px">How a permit works, start to finish</h2>
+      </div>
+      <p class="muted small">Seven stages. Most simple projects skip zoning and move straight to plan review. Tap a stage for details.</p>
+    </div>
+    <ol class="path" id="path"></ol>
+  </div>
+
+  <div class="home-sec">
+    <div class="sechead">
+      <div>
+        <div class="eyebrow">Do I need a permit?</div>
+        <h2 style="margin-top:8px">It depends on the kind of work</h2>
+      </div>
+      <p class="muted small">New Jersey's Rehabilitation Subcode sorts work on existing homes into categories. The bigger the change, the more you'll submit.</p>
+    </div>
+    <div class="scale" id="scale"></div>
+    <p class="small muted" style="margin-top:14px">Not sure where your project falls? <a href="#start" data-go="start">Plan my project</a> will sort it for you.</p>
+  </div>
+
+  <div class="home-sec" id="ask-sec">
+    <div class="ask">
+      <div>
+        <div class="eyebrow">Ask a question</div>
+        <h2 style="margin-top:8px">Plain answers about the process</h2>
+        <p class="muted" style="margin-top:10px">Answers draw on the Township's homeowner guide. For anything specific to your property, call the office.</p>
+      </div>
+      <div>
+        <form id="ask-form">
+          <input type="text" id="ask-q" placeholder="e.g. Can I draw my own deck plans?" aria-label="Your question" autocomplete="off">
+          <button class="btn dark" type="submit">Ask</button>
+        </form>
+        <div class="chips" id="ask-chips"></div>
+        <div class="answer" id="ask-a" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="home-sec">
+    <div class="sechead"><div><div class="eyebrow">Common questions</div><h2 style="margin-top:8px">Before you start</h2></div></div>
+    <div id="faq"></div>
+  </div>
+</section>
+
+<!-- ============ WIZARD ============ -->
+<section class="view" id="v-start">
+  <div class="wiz">
+    <ol class="steps" id="steps"></ol>
+    <div>
+      <!-- 1 -->
+      <div class="wstep" data-step="0">
+        <header><div class="eyebrow">Step 1 of 5</div><h2 style="margin-top:8px">What are you planning?</h2><p class="muted">Pick everything that's part of the job. You can choose more than one.</p></header>
+        <div class="cards" id="pcards"></div>
+        <div class="err" id="e0" hidden>Choose at least one project to continue.</div>
+        <div class="wnav"><span></span><button class="btn primary" data-next>Continue</button></div>
+      </div>
+      <!-- 2 -->
+      <div class="wstep" data-step="1">
+        <header><div class="eyebrow">Step 2 of 5</div><h2 style="margin-top:8px">A few questions about the work</h2><p class="muted">"Not sure" is a fine answer. We'll flag it so the office can help.</p></header>
+        <div id="qs"></div>
+        <div class="grid2">
+          <label class="f">Describe the work in a sentence or two
+            <textarea id="desc" placeholder="e.g. Replace kitchen cabinets and counters, move the sink to the island, add two outlets."></textarea>
+          </label>
+          <label class="f">Estimated cost of the work
+            <span class="hint">What a professional would charge for labor and materials, even if you're doing it yourself.</span>
+            <input type="number" id="cost" min="0" step="100" placeholder="25000" inputmode="numeric">
+          </label>
+        </div>
+        <div class="wnav"><button class="btn ghost" data-back>Back</button><button class="btn primary" data-next>Continue</button></div>
+      </div>
+      <!-- 3 -->
+      <div class="wstep" data-step="2">
+        <header><div class="eyebrow">Step 3 of 5</div><h2 style="margin-top:8px">Your home and who's doing the work</h2></header>
+        <div class="grid2">
+          <label class="f">Property address<input type="text" id="addr" placeholder="123 Main St, Moorestown" autocomplete="street-address"></label>
+          <label class="f">Block &amp; lot <span class="hint">Optional. It's on your tax bill.</span><input type="text" id="blocklot" placeholder="Block 1234, Lot 5"></label>
+          <label class="f">Owner's name<input type="text" id="oname" autocomplete="name"></label>
+          <label class="f">Email<input type="email" id="oemail" autocomplete="email"></label>
+          <label class="f">Phone<input type="tel" id="ophone" autocomplete="tel"></label>
+        </div>
+        <div>
+          <div class="q"><div class="qt">Is this a single-family home you live in?<span>Owners of a single-family home they live in may do their own work and draw their own plans.</span></div><div class="seg" data-a="ownerOcc"></div></div>
+          <div class="q"><div class="qt">Who is doing the work?</div><div class="seg" data-a="doer" data-opts="Me|A contractor|Both"></div></div>
+          <div class="q"><div class="qt">Who is preparing the plans, if any?<span>Licensed electricians and plumbers may draw plans for their own trade.</span></div><div class="seg" data-a="plansBy" data-opts="Me|Architect or engineer|Licensed trade|None needed"></div></div>
+        </div>
+        <label class="f" id="contractor-wrap" hidden>Contractor's business name<input type="text" id="contractor"></label>
+        <div class="err" id="e2" hidden>Add the property address, owner's name and an email so the office can reach you.</div>
+        <div class="wnav"><button class="btn ghost" data-back>Back</button><button class="btn primary" data-next>See my permit plan</button></div>
+      </div>
+      <!-- 4 -->
+      <div class="wstep" data-step="3">
+        <div id="plan"></div>
+        <div class="wnav"><button class="btn ghost" data-back>Back</button><button class="btn primary" data-next>Gather documents</button></div>
+      </div>
+      <!-- 5 -->
+      <div class="wstep" data-step="4">
+        <header><div class="eyebrow">Step 5 of 5</div><h2 style="margin-top:8px">Gather your documents</h2><p class="muted">Check off what you have ready and attach files if you have them. The office does a quick completeness check when your application arrives, so a full packet moves faster.</p></header>
+        <ul class="checklist" id="doclist"></ul>
+        <div class="note plain small" id="ready-note"></div>
+        <div class="err" id="e4" hidden></div>
+        <div class="wnav"><button class="btn ghost" data-back>Back</button><button class="btn primary" id="submit">Submit for review</button></div>
+      </div>
+      <!-- done -->
+      <div class="wstep" data-step="5">
+        <div id="done"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TRACK ============ -->
+<section class="view" id="v-track">
+  <div class="sechead">
+    <div><div class="eyebrow">My applications</div><h2 style="margin-top:8px">Where things stand</h2></div>
+    <a class="btn" href="#start" data-go="start">Start another project</a>
+  </div>
+  <div id="store-banner"></div>
+  <div class="stack" id="mine" style="gap:20px"></div>
+</section>
+
+<!-- ============ RESOURCES ============ -->
+<section class="view" id="v-resources">
+  <div class="sechead">
+    <div><div class="eyebrow">Forms &amp; contacts</div><h2 style="margin-top:8px">Everything in one place</h2></div>
+    <p class="muted small">Links open the Township's official documents.</p>
+  </div>
+  <div class="res" id="res"></div>
+  <div class="home-sec" id="contact">
+    <div class="sechead"><div><div class="eyebrow">Contact</div><h2 style="margin-top:8px">Construction Office</h2></div></div>
+    <div class="office">
+      <div><div class="k">Visit</div>Town Hall, 2nd floor<br>111 W. Second Street<br>Moorestown, NJ 08057</div>
+      <div><div class="k">Call</div><span class="mono" style="user-select:all">856-235-0912</span> ext. 3018<br><span class="muted small">Fax 856-914-3019</span></div>
+      <div><div class="k">Counter hours</div>8:30 a.m. – 4:30 p.m.<br><span class="muted small">Inspectors take calls about 8–9 a.m. and 2:30–3 p.m.</span></div>
+      <div><div class="k">Inspections</div>8:30 a.m. – 2:30 p.m. daily<br><span class="muted small">Schedule through SDL</span></div>
+    </div>
+    <div class="staff" id="staff" style="margin-top:28px"></div>
+  </div>
+</section>
+
+<!-- ============ STAFF ============ -->
+<section class="view" id="v-staff">
+  <div class="sechead">
+    <div><div class="eyebrow">Staff console</div><h2 style="margin-top:8px">Application review</h2></div>
+    <div class="row" id="staff-actions"></div>
+  </div>
+  <div id="staff-banner"></div>
+  <div class="console">
+    <div class="queue">
+      <div class="qh">
+        <input type="search" id="qsearch" placeholder="Search name, address or number" aria-label="Search applications">
+        <div class="filters" id="qfilters"></div>
+      </div>
+      <div class="qlist" id="qlist"></div>
+    </div>
+    <div class="detail" id="qdetail"></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div>Township of Moorestown Construction Office · 111 W. Second Street · 856-235-0912 ext. 3018<br>Official filing, payment and inspection scheduling: <a href="https://www.sdlportal.com/login" target="_blank" rel="noopener">SDL portal</a></div>
+    <div class="demo"><sup>*</sup>A demonstration prototype by the Moorestown AI Task Force for review by Township officials. Guidance here summarizes the Township's homeowner guide and is not a code determination. Submissions are not official permit applications.</div>
+  </div>
+</footer>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+"use strict";
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>el.hidden=true,3200)}
+const fmtDate=t=>new Date(t).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
+
+/* ---------- Official links ---------- */
+const DC="https://www.moorestown.nj.us/DocumentCenter/View/";
+const L={
+  app:DC+"70/Construction-Permit-Application-PDF", bldg:DC+"67/Building-Subcode-Technical-Section-PDF",
+  plumb:DC+"74/Plumbing-Subcode-Technical-Section-PDF", mech:DC+"5137/Mechanical-Subcode-Technical-Section",
+  fire:DC+"72/Fire-Subcode-Technical-Section-PDF", elec:DC+"71/Electrical-Subcode-Technical-Section-PDF",
+  fees:DC+"9244/Municipal-Construction-Permit-Fee-Schedule-Revised-2025", checklist:DC+"6831/Construction-Permit-Checklist",
+  airbar:DC+"4218/air-barrier-and-insulation-checklist-f392", framing:DC+"4224/framing-checklist-f390",
+  insp:DC+"6691/Required-Inspections", smoke:DC+"7430/Smoke-Alarm--Carbon-Monoxide-Requirements",
+  pool:DC+"6914/Shared-Barrier-for-Swimming-Pools-Form-", dispcost:DC+"7431/Disproportionate-Cost--Explanation-",
+  basement:DC+"8820/Finished-Basement-Permit-Pamphlet", deck:DC+"6698/Residential-Decks-Permit",
+  chimney:DC+"5143/Chimney-Certification", placard:DC+"6833/Maximum-Occupancy-Sign",
+  floodapp:DC+"6863/Floodplain-Development-Permit-Application", ownaff:DC+"6860/Owners-Affidavit",
+  conaff:DC+"6862/Contractors-Affidavit", sisd:DC+"6861/SISD-Application-Instructions",
+  origin:DC+"8072/Project-Origination-Packet", devproc:DC+"8071/Development-Permit-Process",
+  pamphlet:DC+"8821/Permits-for-Residential-Projects-Pamphlet",
+  fema:"https://msc.fema.gov/portal/home", dca:"https://www.nj.gov/dca/codes/index.shtml",
+  zoning:"https://www.moorestown.nj.us/155/Zoning-Office", office:"https://www.moorestown.nj.us/153/Construction-Office-Building-Inspections",
+  sdlSignup:"https://www.sdlportal.com/signup", sdlLogin:"https://www.sdlportal.com/login",
+  sdl1:"https://help.getsdl.com/intro-to-the-online-plan-review-opr-process",
+  sdl2:"https://help.getsdl.com/opr-managing-your-submission-and-tasks",
+  sdl3:"https://help.getsdl.com/opr-for-citizens-handling-denials-and-correcting-markups"
+};
+const ext=(href,txt)=>`<a href="${href}" target="_blank" rel="noopener">${txt}</a>`;
+
+/* ---------- Guide content ---------- */
+const PATH=[
+  ["Plan your project","Know what you're building and who's building it",`<p>Decide the scope, get a market-value estimate of cost, and choose whether you'll do the work or hire a licensed contractor. If you're installing equipment, keep the manufacturer's spec sheets handy.</p><ul><li>Single-family owner-occupants may do their own plumbing, electrical and HVAC work. Everyone else needs licensed trades.</li><li>Home improvement contractors can't prepare plans unless they're licensed to.</li></ul>`],
+  ["Zoning approval, if needed","Most exterior work; up to 10 business days",`<p>Decks, additions, sheds, fences, pools, generators and similar exterior work usually need zoning approval first. Zoning is a prerequisite to construction plan review. Most interior remodels skip this step.</p><p style="margin-top:8px">${ext(L.zoning,"Zoning Office")}</p>`],
+  ["Apply","The permit jacket, technical sections and plans",`<p>Every application starts with the Construction Permit Application (the "jacket") plus a technical section for each trade involved: building, electrical, plumbing, mechanical or fire. Add two sets of plans when the work changes layout, structure or systems.</p><ul><li>Write "self" if you are the contractor or plan preparer.</li><li>Submit online through SDL or at the counter.</li></ul>`],
+  ["Plan review","Up to 20 business days by law (N.J.A.C. 5:23-2.16)",`<p>The office does a quick completeness check at intake, then a full code review. Some projects also need the township engineer, Burlington County Health Department, Soil Conservation District or the floodplain administrator to sign off first.</p><p style="margin-top:8px">Most first submissions get comments, even from experienced builders. Answer each comment, revise the plans, and include a short note explaining each fix.</p>`],
+  ["Permit issued","Pay the fee and post the placard",`<p>You'll be told when the permit is approved and what the fee is. After payment you get the permit, your approved plans (keep them on site for every inspection), and a placard to post where it can be seen. Work can't start until the permit is released.</p><p style="margin-top:8px">${ext(L.fees,"2025 fee schedule")}</p>`],
+  ["Inspections","Scheduled as work reaches each stage",`<p>Schedule inspections through SDL as work reaches each stage. Typical ones include footing, framing, rough electrical and plumbing, insulation, and finals. Not every inspection applies to every job.</p><p style="margin-top:8px">${ext(L.insp,"List of required inspections")}</p>`],
+  ["Close the permit","Final inspections and your certificate",`<p>When final inspections pass, the office issues a certificate. That's your proof the work meets code. Don't make a final payment to a contractor until you have it. Open permits must be closed before a home can be sold in Moorestown.</p>`]
+];
+const SCALE=[
+  ["Ordinary maintenance","5:23-2.7","Routine fixes, replacing worn or broken parts.","No permit",8],
+  ["Repair","5:23-6.4","Restoring worn materials with the same or similar ones.","Sometimes a permit, rarely plans",28],
+  ["Renovation","5:23-6.5","Replacing finishes, fixtures or equipment without changing the space.","Permit, usually no plans",50],
+  ["Alteration","5:23-6.6","Moving walls, adding doors or windows, extending systems, structural work.","Permit and plans",76],
+  ["Addition","5:23-6.32","Adding to the building. New construction rules apply.","Permit, plans and usually zoning",100]
+];
+const FAQ=[
+  ["Can I do the work myself?","Yes, if you own and live in a single-family home. New Jersey lets you do your own plumbing, electrical and HVAC work there. Given the risks, the Township recommends a licensed professional unless you're comfortable with the work."],
+  ["Can I draw my own plans?","Owners of a single-family detached home used as their private residence may prepare their own plans. Plans need to be to scale with enough detail to show code compliance. Licensed electricians and plumbers may also draw plans for their trade."],
+  ["What cost do I put on the application?","What a professional would charge for labor and materials at current market value, even if you're doing the work yourself or getting materials cheaply."],
+  ["My application came back with comments. Now what?","That's normal. Most first submissions get comments. Address each one, look up any code sections cited, revise your plans, and resubmit with a short note on how you handled each item. Call and ask for the plans examiner if a comment isn't clear."],
+  ["My contractor pulled the permit. Do I need to do anything?","Yes. It's still the owner's responsibility to confirm the permit was released before work starts, and to make sure final inspections happen and a certificate is issued."],
+  ["Is my property in a flood zone?",`Check the ${ext(L.fema,"FEMA flood map service")}. Projects in a flood hazard area need a floodplain development permit and affidavits before construction review.`]
+];
+
+/* ---------- Project knowledge ---------- */
+const P=[
+  {id:"kitchen",n:"Kitchen remodel",h:"Cabinets, counters, layout, appliances"},
+  {id:"bath",n:"Bathroom remodel",h:"Fixtures, tile, layout"},
+  {id:"basement",n:"Finish a basement",h:"New rooms, bath, egress"},
+  {id:"interior",n:"Move or add walls",h:"Closets, open floor plans"},
+  {id:"deck",n:"Deck or porch",h:"New, rebuilt or enlarged",x:1},
+  {id:"addition",n:"Addition",h:"New rooms, second story, garage",x:1},
+  {id:"shed",n:"Shed or detached garage",h:"Accessory buildings",x:1},
+  {id:"fence",n:"Fence",h:"Any height",x:1},
+  {id:"pool",n:"Pool or hot tub",h:"In-ground, above-ground, spa",x:1},
+  {id:"roof",n:"Roof replacement",h:"Tear-off or overlay",x:1},
+  {id:"siding",n:"Siding",h:"Replace or re-side",x:1},
+  {id:"windows",n:"Windows or doors",h:"Replace or add openings"},
+  {id:"waterheater",n:"Water heater",h:"Gas, electric or tankless"},
+  {id:"hvac",n:"Furnace, boiler or AC",h:"Replace or add equipment"},
+  {id:"generator",n:"Standby generator",h:"Whole-house or partial",x:1},
+  {id:"solar",n:"Solar panels",h:"Roof or ground mount",x:1},
+  {id:"electric",n:"Electrical work",h:"Service upgrade, circuits, EV charger"},
+  {id:"other",n:"Something else",h:"Describe it on the next step"}
+];
+const PN=Object.fromEntries(P.map(p=>[p.id,p]));
+const Q=[
+  {k:"walls",t:"Will you add, remove or move any walls?",s:"Including closets and openings between rooms.",for:["kitchen","bath","basement","interior","addition","other"]},
+  {k:"openings",t:"Are any windows or doors new, or changing size?",s:"Same-size replacements are simpler.",for:["windows","kitchen","bath","basement","interior","addition"]},
+  {k:"structural",t:"Does the work touch beams, joists, rafters or load-bearing walls?",for:["kitchen","bath","basement","interior","roof","windows","solar","other"]},
+  {k:"plumbing",t:"Are sinks, toilets, tubs or showers being added or moved?",s:"Swapping a fixture in the same spot doesn't count.",for:["kitchen","bath","basement","addition","other"]},
+  {k:"electric",t:"Are you adding circuits, outlets, switches or light fixtures?",for:["kitchen","bath","basement","interior","deck","addition","shed","pool","electric","other"]},
+  {k:"gas",t:"Is a gas appliance or gas line part of the job?",s:"Range, furnace, water heater, pool heater, generator, fireplace.",for:["kitchen","basement","addition","pool","waterheater","hvac","generator","other"]},
+  {k:"bigShed",t:"Is the shed or garage larger than 200 sq ft?",for:["shed"]},
+  {k:"tallFence",t:"Is the fence taller than 6 feet?",for:["fence"]},
+  {k:"soil",t:"Will you disturb more than 5,000 sq ft of soil?",s:"Large excavations can need Burlington County Soil Conservation District approval.",for:["addition","pool"]},
+  {k:"flood",t:`Is the property in a flood hazard area?`,s:"You can check the FEMA flood map.",for:"*"}
+];
+const DISC={B:["Building","bldg"],E:["Electrical","elec"],P:["Plumbing","plumb"],M:["Mechanical","mech"],F:["Fire","fire"]};
+
+function computePlan(s){
+  const pr=s.projects, a=s.answers, has=id=>pr.includes(id), y=k=>a[k]==="Yes", u=k=>a[k]==="Not sure";
+  const d=new Set(); let cls=0; // 0 maint,1 repair,2 reno,3 alter,4 addition/new
+  const notes=[], prior=[], docs=[], insp=new Set();
+  let zoning="no", plans=false, permit=true;
+  const bump=n=>{cls=Math.max(cls,n)};
+  pr.forEach(id=>{
+    switch(id){
+      case "kitchen": d.add("B"); bump(2); if(y("plumbing")){d.add("P");bump(3)} if(y("electric")||!a.electric){d.add("E")} if(y("gas"))d.add("M"); break;
+      case "bath": d.add("B");d.add("P");d.add("E"); bump(2); if(y("plumbing"))bump(3); break;
+      case "basement": d.add("B");d.add("E");d.add("F"); bump(3); if(y("plumbing"))d.add("P"); if(y("gas"))d.add("M"); docs.push("basement"); break;
+      case "interior": d.add("B");d.add("F"); bump(3); if(y("electric"))d.add("E"); break;
+      case "deck": d.add("B"); bump(4); zoning="yes"; plans=true; if(y("electric"))d.add("E"); docs.push("deck"); break;
+      case "addition": ["B","E","F"].forEach(x=>d.add(x)); bump(4); zoning="yes"; plans=true; if(y("plumbing"))d.add("P"); if(y("gas"))d.add("M"); docs.push("survey"); break;
+      case "shed": zoning="yes"; if(y("bigShed")||u("bigShed")){d.add("B");bump(4);plans=true} else notes.push("Sheds 200 sq ft or smaller generally don't need a construction permit in New Jersey, but still need zoning approval for placement."); if(y("electric"))d.add("E"); docs.push("survey"); break;
+      case "fence": zoning="yes"; if(y("tallFence")||u("tallFence")){d.add("B");bump(4)} else notes.push("Fences 6 feet tall or less generally don't need a construction permit, but zoning approval is required."); docs.push("survey"); break;
+      case "pool": d.add("B");d.add("E"); bump(4); zoning="yes"; plans=true; if(y("gas"))d.add("M"); docs.push("poolbar","survey"); notes.push("Pools need a compliant barrier (fence or wall). If you share a barrier with a neighbor, file the shared barrier form."); break;
+      case "roof": d.add("B"); bump(2); if(y("structural")){bump(3);plans=true} break;
+      case "siding": d.add("B"); bump(2); break;
+      case "windows": d.add("B"); bump(2); if(y("openings")){bump(3);plans=true} break;
+      case "waterheater": d.add("P"); bump(2); if(y("gas"))d.add("M"); else d.add("E"); docs.push("spec"); notes.push("Water heater replacements are usually a quick review. Include the manufacturer's spec sheet."); break;
+      case "hvac": d.add("M"); d.add("E"); bump(2); docs.push("spec","manualj"); break;
+      case "generator": d.add("E"); d.add("M"); bump(4); zoning="yes"; docs.push("spec","survey"); break;
+      case "solar": d.add("B"); d.add("E"); bump(3); zoning="check"; plans=true; docs.push("spec"); break;
+      case "electric": d.add("E"); bump(2); if(y("electric"))bump(3); break;
+      case "other": d.add("B"); bump(2); if(zoning==="no")zoning="check"; break;
+    }
+  });
+  if(y("walls")||y("structural")||y("openings")) {bump(3); plans=true; d.add("B")}
+  if(cls>=3) plans=true;
+  if(y("gas")) {d.add("M"); docs.push("spec")}
+  if((cls>=3) && (d.has("E")||has("basement")||has("addition"))) d.add("F");
+  if(!d.size){permit=false}
+  if(pr.some(id=>["kitchen","bath","basement","interior","windows","waterheater","hvac","electric"].includes(id)) && zoning==="no" && pr.some(id=>PN[id].x)) zoning="check";
+  if(u("walls")||u("structural")||u("plumbing")) notes.push("You answered “not sure” to a scope question. That's fine. The office will confirm what's needed during intake.");
+  if(y("flood")||u("flood")) prior.push(["Floodplain administrator","Floodplain development permit and affidavits",y("flood")?"yes":"check"]);
+  if(y("soil")) prior.push(["Burlington County Soil Conservation District","Soil erosion and sediment control approval","yes"]);
+  if(has("addition")||has("pool")) prior.push(["Township engineer","Grading and drainage review may be required","check"]);
+  if(zoning!=="no") prior.unshift(["Zoning Office","Zoning permit and fee",zoning]);
+
+  // documents
+  const D=[];
+  const add=(id,n,p,link)=>{if(!D.find(x=>x.id===id))D.push({id,n,p,link})};
+  if(permit) add("jacket","Construction Permit Application","The permit “jacket.” Complete boxes I, IIa and IIb, then sign the certification.",L.app);
+  [...d].forEach(k=>add("tech-"+k,`${DISC[k][0]} technical section`,"Include the cost and a description of the work. Write “self” if you're the contractor.",L[DISC[k][1]]));
+  if(zoning!=="no") add("zoning","Zoning permit application and fee",zoning==="yes"?"Zoning reviews first, then construction.":"Ask the Zoning Office whether your project needs approval.",L.zoning);
+  if(plans) add("plans","Two sets of plans, drawn to scale","Plan view, plus elevations, sections or trade plans as the work requires.",L.pamphlet);
+  if(docs.includes("survey")) add("survey","Property survey showing the new work","Mark the location and distances to property lines.",null);
+  if(docs.includes("deck")) add("deck","Residential deck permit guide","Use it to prepare your deck plans: footings, framing, ledger and guards.",L.deck);
+  if(docs.includes("basement")) add("basement","Finished basement permit guide","Covers egress, ceiling height, smoke and CO alarms.",L.basement);
+  if(docs.includes("spec")) add("spec","Manufacturer spec sheets","For every appliance or piece of equipment being installed.",null);
+  if(docs.includes("manualj")) add("manualj","HVAC design (Manual J and Manual S)","Heat-loss and equipment-sizing calculations.",null);
+  if(docs.includes("poolbar")) add("poolbar","Shared barrier for swimming pools form","Only if your pool barrier is shared with a neighbor.",L.pool);
+  if(y("flood")||u("flood")) {add("flood","Floodplain development application","Plus owner's and contractor's affidavits.",L.floodapp)}
+  if(d.has("F")) add("smoke","Smoke and CO alarm plan","Show alarm locations on your plans.",L.smoke);
+
+  // inspections
+  if(has("deck")||has("addition")||(has("shed")&&d.has("B"))||has("pool")) insp.add("Footing");
+  if(d.has("B")&&cls>=3) {insp.add("Framing")}
+  if(d.has("E")) insp.add("Rough electrical");
+  if(d.has("P")) insp.add("Rough plumbing");
+  if(d.has("M")) insp.add("Gas / mechanical rough");
+  if(d.has("B")&&cls>=3&&(has("addition")||has("basement")||y("walls"))) insp.add("Insulation");
+  if(has("pool")) insp.add("Pool barrier and bonding");
+  if(permit) insp.add("Final inspections (each trade)");
+
+  // timeline
+  const tl=[["Completeness check at intake","Same day",true]];
+  prior.forEach(p=>tl.push([p[0],p[0]==="Zoning Office"?"Up to 10 business days":"Varies",false]));
+  if(permit){tl.push(["Construction plan review","Up to 20 business days",true],["Permit issued, then work and inspections","Your schedule",false],["Certificate issued, permit closed","After finals",true])}
+
+  const CLS=["Ordinary maintenance","Repair","Renovation","Alteration","Addition / new construction"];
+  return {permit, cls, clsName:CLS[cls], disc:[...d], zoning, plans, prior, docs:D, insp:[...insp], tl, notes};
+}
+
+/* ---------- Store (db with browser fallback) ---------- */
+const Store={mode:"local",db:null,user:null,uid:"local",canEdit:true,_mine:[],_subs:[],
+  async init(){
+    try{
+      if(window.claude&&claude.use){
+        const [db,user]=await Promise.all([claude.use("db"),claude.use("user")]);
+        if(db&&user){this.db=db;this.user=user;this.uid=await user.id();this.mode="db";try{this.canEdit=await user.canEdit()}catch(e){this.canEdit=false}}
+      }
+    }catch(e){}
+  },
+  localAll(){return LS.get("mt-apps",{})},
+  localSave(all){LS.set("mt-apps",all);this._emitLocal()},
+  _emitLocal(){const all=this.localAll();this._subs.forEach(f=>f(all))},
+  flatten(map){const out=[];Object.entries(map).forEach(([docId,d])=>Object.values((d&&d.apps)||{}).forEach(a=>out.push({...a,_doc:docId})));return out},
+  subscribeMine(cb){
+    if(this.mode==="db"){
+      this.db.doc("applications/"+this.uid).onSnapshot(s=>{const d=s.data();cb(Object.values((d&&d.apps)||{}).map(a=>({...a,_doc:this.uid})))},e=>cb([],e));
+    }else{const f=all=>cb(Object.values((all[this.uid]&&all[this.uid].apps)||{}).map(a=>({...a,_doc:this.uid})));this._subs.push(f);f(this.localAll())}
+  },
+  subscribeAll(cb){
+    if(this.mode==="db"){
+      this.db.collection("applications").onSnapshot(qs=>{const m={};qs.docs.forEach(d=>m[d.id]=d.data());cb(this.flatten(m))},e=>cb(null,e));
+    }else{const f=all=>cb(this.flatten(all));this._subs.push(f);f(this.localAll())}
+  },
+  async put(docId,app){
+    const clean={...app};delete clean._doc;
+    if(this.mode==="db"){
+      const ref=this.db.doc("applications/"+docId);const s=await ref.get();const d=(s.exists&&s.data())||{};
+      const apps={...(d.apps||{})};apps[app.ref]=clean;await ref.set({apps,updatedAt:Date.now()});
+    }else{const all=this.localAll();all[docId]=all[docId]||{apps:{}};all[docId].apps[app.ref]=clean;this.localSave(all)}
+  },
+  async remove(docId,ref){
+    if(this.mode==="db"){const r=this.db.doc("applications/"+docId);const s=await r.get();const d=(s.exists&&s.data())||{};const apps={...(d.apps||{})};delete apps[ref];await r.set({apps,updatedAt:Date.now()})}
+    else{const all=this.localAll();if(all[docId]){delete all[docId].apps[ref];this.localSave(all)}}
+  }
+};
+
+/* ---------- Status model ---------- */
+const ST=[
+  ["received","Received"],["screening","Completeness check"],["zoning","Zoning review"],["review","Plan review"],
+  ["info","Needs your input"],["approved","Approved, ready to pay"],["issued","Permit issued"],["inspections","Inspections"],["closed","Closed"]
+];
+const STN=Object.fromEntries(ST);
+const statusPill=s=>{const c=s==="info"?"bad":s==="closed"||s==="issued"||s==="approved"?"ok":s==="received"?"y":"";return `<span class="pill ${c}">${esc(STN[s]||s)}</span>`};
+
+/* ---------- Router ---------- */
+let mode="home";
+const VIEWS=["home","start","track","resources","staff"];
+function go(v,push=true){
+  if(!VIEWS.includes(v))v="home";
+  mode=v==="staff"?"staff":"home";
+  $$("section.view").forEach(s=>s.classList.toggle("on",s.id==="v-"+v));
+  $$("nav.main a").forEach(a=>a.toggleAttribute("aria-current",false));
+  const cur=$(`nav.main a[data-go="${v}"]`);if(cur)cur.setAttribute("aria-current","page");
+  $("#nav-home").style.visibility=mode==="staff"?"hidden":"visible";
+  $("#m-home").setAttribute("aria-pressed",mode==="home");$("#m-staff").setAttribute("aria-pressed",mode==="staff");
+  if(push&&location.hash!=="#"+v){try{history.replaceState(null,"","#"+v)}catch(e){}}
+  window.scrollTo({top:0});
+  if(v==="staff")renderQueue();
+}
+document.addEventListener("click",e=>{const a=e.target.closest("[data-go]");if(a){e.preventDefault();go(a.dataset.go)}});
+$("#m-home").onclick=()=>go("home");$("#m-staff").onclick=()=>go("staff");
+window.addEventListener("hashchange",()=>go(location.hash.slice(1),false));
+
+/* ---------- Home render ---------- */
+$("#path").innerHTML=PATH.map((p,i)=>`<li${i===0?' class="open"':""}><button type="button" aria-expanded="${i===0}"><span class="n">${i+1}</span><span class="t">${p[0]}<span>${p[1]}</span></span><span class="muted mono small">${i===0?"–":"+"}</span></button><div class="body">${p[2]}</div></li>`).join("");
+$("#path").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const li=b.parentElement;const o=!li.classList.contains("open");li.classList.toggle("open",o);b.setAttribute("aria-expanded",o);b.lastElementChild.textContent=o?"–":"+"});
+$("#scale").innerHTML=SCALE.map(s=>`<div><div class="lvl"><i style="width:${s[4]}%"></i></div><h3>${s[0]}</h3><div class="cite">N.J.A.C. ${s[1]}</div><div class="what">${s[2]}</div><div class="need">${s[3]}</div></div>`).join("");
+$("#faq").innerHTML=FAQ.map(f=>`<details class="faq"><summary>${f[0]}</summary><p>${f[1]}</p></details>`).join("");
+
+/* ---------- AI: homeowner Q&A ---------- */
+const KB=`Moorestown Township (NJ) Construction Office homeowner guide, summarized:
+- Construction is governed by the NJ Uniform Construction Code (N.J.A.C. 5:23, "UCC"). Rehabilitation Subcode (5:23-6) categories: ordinary maintenance (5:23-2.7, no permit), repair (6.4, permit sometimes, plans rarely), renovation (6.5, permit typically, replacing finishes/fixtures/equipment without changing space), alteration (6.6, permit and plans typically: walls, doors/windows added or removed, extending systems, new fixtures, structural work), reconstruction (6.7, permit and plans, space can't be occupied during work), addition (6.32, current code applies, permit and plans).
+- Application = Construction Permit Application "jacket" (complete boxes I, IIa, IIb; sections VI and VII best effort; write "self" for contractor/architect if applicable; sign Certification in Lieu of Oath section I as owner) plus a technical section per discipline: building, electrical, plumbing, mechanical, fire. Examples: water heater = mechanical (+electrical if electric); deck = building (+electrical if lighting); kitchen with fixture relocation = building, electrical, plumbing, fire; basement = building, electrical, fire (+plumbing if bathroom).
+- Cost of work = what a professional would charge for labor and materials, even if DIY.
+- Plans: two sets, to scale. Owners of single-family detached homes used exclusively as their private residence may prepare their own plans. Home improvement contractors cannot prepare plans unless licensed. NJ licensed electrical contractors may prepare electric plans; licensed plumbers may prepare plumbing plans and gas riser diagrams; licensed HVACR contractors may prepare gas piping plans. Plan types: plan view, elevation, ductwork, cross section, electric, plumbing (with water and DWV riser diagrams), mechanical/gas riser.
+- Single-family homeowners may do their own plumbing, electrical, HVAC on their own dwelling; otherwise licensed persons required. Township advises hiring licensed professionals.
+- Other documents may include chimney certification, Manual J and S, manufacturer cut sheets for gas appliances, kitchen exhaust hood and make-up air info, zoning application and fee.
+- Most interior remodels don't need zoning; most exterior projects do. Zoning is a prior approval and can take up to 10 business days. Other prior approvals: township engineer, Burlington County Health Department, Burlington County Soil Conservation District, floodplain administrator.
+- Intake: cursory completeness check when dropped off. Construction office has 20 business days to review (N.J.A.C. 5:23-2.16(a)). Deficiencies sent in writing. Most applications get rejected on first review; address each comment, include a narrative, call to speak with the plans examiner.
+- Approval: notified of fee (per Township fee schedule, revised 2025); after payment receive permit, approved plans (must be on site for inspections), placard to post. Owner must verify permit is released before work starts even if contractor applied.
+- Inspections per the Required Inspections list; applicant schedules them (SDL portal online). Final inspections lead to a certificate; don't make final payment to contractor until you have it. Permits stay open until a certificate is issued; open permits must be closed before a home sale (local ordinance).
+- Office: Town Hall, 111 W. Second Street, 2nd floor, Moorestown NJ 08057. Phone 856-235-0912 ext. 3018. Counter 8:30am-4:30pm. Inspector phone hours roughly 8-9am and 2:30-3pm. Inspections 8:30am-2:30pm. Online: SDL portal (sdlportal.com) for submission, inspection scheduling, status, credit card payment.
+- Floodplain: check FEMA map; floodplain development application, owner's and contractor's affidavits.
+- Typical NJ exemptions (confirm with office): sheds 200 sq ft or less and fences 6 ft or less generally don't need a construction permit but still need zoning.`;
+const ASKS=["Can I draw my own plans?","Do I need a permit to replace my water heater?","How long does review take?","What if my application is rejected?"];
+$("#ask-chips").innerHTML=ASKS.map(q=>`<button type="button" class="chip">${q}</button>`).join("");
+$("#ask-chips").onclick=e=>{const c=e.target.closest(".chip");if(c){$("#ask-q").value=c.textContent;askRun()}};
+let sampleNS=null, askCtl=null;
+async function askRun(){
+  const q=$("#ask-q").value.trim();if(!q)return;const out=$("#ask-a");
+  if(!sampleNS){out.textContent="Answers aren't available in this view. Call the office at 856-235-0912 ext. 3018.";return}
+  askCtl?.abort();askCtl=new AbortController();out.innerHTML='<span class="spinner"></span>';
+  try{
+    await sampleNS(`You answer homeowner questions for the Moorestown Township, NJ Construction Office permit portal. Use only the guide below. Be warm, plain and brief: 2 to 5 short sentences, no headings, no bullet lists unless listing forms. If the answer depends on specifics, say so and suggest calling the office. Never state a fee amount. Don't invent rules.\n\nGUIDE:\n${KB}\n\nQUESTION: ${q}`,{modelTier:"quick",signal:askCtl.signal,onText:({text})=>{out.textContent=text}});
+  }catch(e){if(e&&e.name!=="AbortError")out.textContent=e&&e.code==="rate_limited"?"Too many questions at once. Try again in a minute.":"Couldn't get an answer just now. Call the office at 856-235-0912 ext. 3018."}
+}
+$("#ask-form").onsubmit=e=>{e.preventDefault();askRun()};
+
+/* ---------- Resources ---------- */
+const RES=[
+  ["Apply",[["Construction Permit Application",L.app,"PDF"],["Building technical section",L.bldg,"PDF"],["Electrical technical section",L.elec,"PDF"],["Plumbing technical section",L.plumb,"PDF"],["Mechanical technical section",L.mech,"PDF"],["Fire technical section",L.fire,"PDF"],["Fee schedule (revised 2025)",L.fees,"PDF"],["Construction permit checklist",L.checklist,"PDF"]]],
+  ["Guides & checklists",[["Homeowner's guide to permits",L.pamphlet,"PDF"],["Residential deck guide",L.deck,"PDF"],["Finished basement guide",L.basement,"PDF"],["Required inspections",L.insp,"PDF"],["Framing checklist",L.framing,"PDF"],["Air barrier & insulation checklist",L.airbar,"PDF"],["Smoke & CO alarm requirements",L.smoke,"PDF"],["Chimney certification",L.chimney,"PDF"],["Shared pool barrier form",L.pool,"PDF"],["Disproportionate cost explanation",L.dispcost,"PDF"],["Occupancy placard",L.placard,"PDF"]]],
+  ["Flood zones",[["Check the FEMA flood map",L.fema,"Web"],["Floodplain development application",L.floodapp,"PDF"],["Owner's affidavit",L.ownaff,"PDF"],["Contractor's affidavit",L.conaff,"PDF"],["Substantial improvement instructions",L.sisd,"PDF"],["Project origination packet",L.origin,"PDF"],["Development permit process",L.devproc,"PDF"]]],
+  ["Online filing (SDL)",[["Create an SDL account",L.sdlSignup,"Web"],["Sign in to SDL",L.sdlLogin,"Web"],["Online plan review: getting started",L.sdl1,"Help"],["Managing your submission",L.sdl2,"Help"],["Handling denials and markups",L.sdl3,"Help"],["Zoning Office",L.zoning,"Web"],["NJ Division of Codes & Standards",L.dca,"Web"],["Construction Office page",L.office,"Web"]]]
+];
+$("#res").innerHTML=RES.map(g=>`<div><h3>${g[0]}</h3><ul>${g[1].map(r=>`<li><a href="${r[1]}" target="_blank" rel="noopener"><span>${r[0]}</span><span class="k">${r[2]}</span></a></li>`).join("")}</ul></div>`).join("");
+const STAFF=[["Joseph LaRocca","Construction Official; Fire & Plumbing Subcode Official","jlarocca"],["David Burd","Building Subcode Official","dburd"],["Dennis Murt","Electrical Subcode Official","dmurt"],["Mark Sorey","Plumbing Subcode Official & Mechanical Inspector","MSorey"],["Alicia Marshall","Technical Assistant to the Construction Official","amarshall"],["Mary Matlack","Technical Assistant","mmatlack"],["Geoff Maleson","Inspector","gmaleson"],["Anthony Piccioni","Inspector","apiccioni"],["Joseph Dougherty","Inspector","JDougherty"],["Robert Rowe","Plumbing & Mechanical Inspector","rrowe"]];
+$("#staff").innerHTML=STAFF.map(s=>`<div><b>${s[0]}</b><span>${s[1]}</span><code>${s[2]}@moorestown.nj.us</code></div>`).join("");
+
+/* ---------- Wizard ---------- */
+const STEPS=["Project","The work","Home & people","Permit plan","Documents"];
+const blank=()=>({projects:[],answers:{ownerOcc:"Yes",doer:"Me",plansBy:"Me"},desc:"",cost:"",addr:"",blocklot:"",oname:"",oemail:"",ophone:"",contractor:"",docs:{}});
+let W=LS.get("mt-draft",null)||blank(); let step=0;
+const saveDraft=()=>LS.set("mt-draft",W);
+function renderSteps(){$("#steps").innerHTML=STEPS.map((s,i)=>`<li class="${i<step?"done":i===step?"cur":""}"><span class="d">${i<step?"✓":i+1}</span><span class="lbl">${s}</span></li>`).join("")}
+function showStep(n){step=n;$$(".wstep").forEach(s=>s.classList.toggle("on",+s.dataset.step===n));renderSteps();$("#steps").style.display=n===5?"none":"";
+  if(n===1)renderQs(); if(n===3)renderPlan(); if(n===4)renderDocs(); window.scrollTo({top:0})}
+function renderCards(){$("#pcards").innerHTML=P.map(p=>`<button type="button" class="pcard" data-p="${p.id}" aria-pressed="${W.projects.includes(p.id)}"><b>${p.n}</b><small>${p.h}</small></button>`).join("")}
+$("#pcards").onclick=e=>{const b=e.target.closest(".pcard");if(!b)return;const id=b.dataset.p;W.projects=W.projects.includes(id)?W.projects.filter(x=>x!==id):[...W.projects,id];b.setAttribute("aria-pressed",W.projects.includes(id));$("#e0").hidden=true;saveDraft()};
+function segHTML(key,opts){const v=W.answers[key];return opts.map(o=>`<button type="button" data-k="${key}" data-v="${esc(o)}" aria-pressed="${v===o}">${esc(o)}</button>`).join("")}
+function renderQs(){
+  const qs=Q.filter(q=>q.for==="*"||q.for.some(f=>W.projects.includes(f)));
+  $("#qs").innerHTML=qs.map(q=>`<div class="q"><div class="qt">${q.t}${q.s?`<span>${q.s}${q.k==="flood"?" "+ext(L.fema,"Open the map"):""}</span>`:""}</div><div class="seg">${segHTML(q.k,["Yes","No","Not sure"])}</div></div>`).join("");
+  $("#desc").value=W.desc;$("#cost").value=W.cost;
+}
+function renderPeople(){$$(".seg[data-a]").forEach(s=>{const k=s.dataset.a;s.innerHTML=segHTML(k,(s.dataset.opts||"Yes|No").split("|"))});
+  ["addr","blocklot","oname","oemail","ophone","contractor"].forEach(k=>$("#"+k).value=W[k]||"");$("#contractor-wrap").hidden=W.answers.doer==="Me"}
+document.addEventListener("click",e=>{const b=e.target.closest(".seg button");if(!b)return;W.answers[b.dataset.k]=b.dataset.v;$$("button",b.parentElement).forEach(x=>x.setAttribute("aria-pressed",x===b));if(b.dataset.k==="doer")$("#contractor-wrap").hidden=b.dataset.v==="Me";saveDraft()});
+$("#desc").oninput=e=>{W.desc=e.target.value;saveDraft()};$("#cost").oninput=e=>{W.cost=e.target.value;saveDraft()};
+["addr","blocklot","oname","oemail","ophone","contractor"].forEach(k=>$("#"+k).addEventListener("input",e=>{W[k]=e.target.value;saveDraft()}));
+$$("[data-next]").forEach(b=>b.onclick=()=>{
+  if(step===0&&!W.projects.length){$("#e0").hidden=false;return}
+  if(step===2){const ok=W.addr.trim()&&W.oname.trim()&&/\S+@\S+\.\S+/.test(W.oemail);$("#e2").hidden=!!ok;if(!ok)return}
+  showStep(step+1)});
+$$("[data-back]").forEach(b=>b.onclick=()=>showStep(step-1));
+
+function renderPlan(){
+  const p=computePlan(W);
+  const zTxt={yes:["Yes","Zoning reviews first"],check:["Check","Ask the Zoning Office"],no:["Not likely","Interior work usually skips zoning"]}[p.zoning];
+  const projNames=W.projects.map(id=>PN[id].n).join(", ");
+  $("#plan").innerHTML=`<div class="stack" style="gap:28px">
+    <header class="plan-head"><div><div class="eyebrow">Step 4 of 5 · Your permit plan</div><h2 style="margin-top:8px">${p.permit?"Here's what your project needs":"You may not need a construction permit"}</h2><p class="muted" style="margin-top:8px">${esc(projNames)} at ${esc(W.addr||"your home")}.</p></div></header>
+    <div class="verdict">
+      <div><div class="k">Construction permit</div><div class="v">${p.permit?"Required":"Probably not"}</div><div class="s">${p.permit?"Under N.J.A.C. 5:23":"Zoning may still apply"}</div></div>
+      <div><div class="k">Type of work</div><div class="v">${p.clsName}</div><div class="s">Rehabilitation Subcode</div></div>
+      <div><div class="k">Plans</div><div class="v">${p.plans?"2 sets needed":"Not usually"}</div><div class="s">${p.plans?(W.answers.plansBy==="Me"&&W.answers.ownerOcc!=="Yes"?"A design professional must prepare them":"Drawn to scale"):"A clear description may do"}</div></div>
+      <div><div class="k">Zoning</div><div class="v">${zTxt[0]}</div><div class="s">${zTxt[1]}</div></div>
+    </div>
+    ${p.disc.length?`<div class="stack"><h3>Technical sections to include</h3><div class="disc">${p.disc.map(k=>`<a class="pill line" href="${L[DISC[k][1]]}" target="_blank" rel="noopener">${DISC[k][0]}</a>`).join("")}</div></div>`:""}
+    ${p.notes.length?`<div class="stack">${p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}</div>`:""}
+    ${W.answers.ownerOcc!=="Yes"&&W.answers.doer!=="A contractor"?`<div class="note">Because this isn't an owner-occupied single-family home, plumbing, electrical and HVAC work must be done by licensed contractors.</div>`:""}
+    <div class="two">
+      <div class="stack"><h3>What to expect</h3><ul class="tl">${p.tl.map(t=>`<li class="${t[2]?"y":""}"><span>${t[0]}</span><span class="dur">${t[1]}</span></li>`).join("")}</ul>
+        ${p.prior.length?`<div class="stack" style="margin-top:8px"><h3>Approvals that come first</h3><ul class="tl">${p.prior.map(x=>`<li><span>${x[0]}<br><span class="muted small">${x[1]}</span></span><span class="dur">${x[2]==="yes"?"Required":"Possibly"}</span></li>`).join("")}</ul></div>`:""}
+      </div>
+      <div class="stack"><h3>Inspections you'll schedule</h3><ul class="tl">${p.insp.map(i=>`<li><span>${i}</span><span></span></li>`).join("")||'<li><span class="muted">None expected</span><span></span></li>'}</ul><p class="small muted">${ext(L.insp,"Full list of required inspections")}</p></div>
+    </div>
+  </div>`;
+}
+function renderDocs(){
+  const p=computePlan(W);
+  $("#doclist").innerHTML=p.docs.map(d=>{const st=W.docs[d.id]||{};return `<li data-id="${d.id}"><button type="button" class="box" role="checkbox" aria-checked="${!!st.ready}" aria-label="${esc(d.n)} ready"></button><div class="it"><b>${esc(d.n)}</b><p>${esc(d.p)} ${d.link?ext(d.link,"Get the form"):""}</p>${st.files&&st.files.length?`<div class="files">${st.files.map(esc).join(" · ")}</div>`:""}</div><div class="act"><label class="btn sm filebtn">Attach<input type="file" multiple aria-label="Attach files for ${esc(d.n)}"></label></div></li>`}).join("");
+  updReady(p);
+}
+function updReady(p){p=p||computePlan(W);const n=p.docs.filter(d=>(W.docs[d.id]||{}).ready).length;
+  $("#ready-note").innerHTML=`<b>${n} of ${p.docs.length}</b> items ready. ${n<p.docs.length?"You can still submit. The office will tell you what's missing.":"Your packet looks complete."} Files attached here are listed by name for this demo; official filing happens through ${ext(L.sdlLogin,"SDL")}.`}
+$("#doclist").addEventListener("click",e=>{const b=e.target.closest(".box");if(!b)return;const id=b.closest("li").dataset.id;W.docs[id]={...(W.docs[id]||{}),ready:!(W.docs[id]||{}).ready};b.setAttribute("aria-checked",W.docs[id].ready);saveDraft();updReady()});
+$("#doclist").addEventListener("change",e=>{if(e.target.type!=="file")return;const id=e.target.closest("li").dataset.id;const names=[...e.target.files].map(f=>f.name);if(!names.length)return;W.docs[id]={ready:true,files:[...((W.docs[id]||{}).files||[]),...names]};saveDraft();renderDocs()});
+
+const mkRef=()=>{const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<4;i++)s+=c[Math.floor(Math.random()*c.length)];return `MT-${String(new Date().getFullYear()).slice(2)}-${s}`};
+$("#submit").onclick=async()=>{
+  const btn=$("#submit");btn.disabled=true;$("#e4").hidden=true;
+  const p=computePlan(W);const now=Date.now();
+  const app={ref:mkRef(),createdAt:now,updatedAt:now,uid:Store.uid,
+    owner:{name:W.oname.trim(),email:W.oemail.trim(),phone:W.ophone.trim()},address:W.addr.trim(),blocklot:W.blocklot.trim(),
+    projects:W.projects,answers:W.answers,description:W.desc.trim(),cost:W.cost?Number(W.cost):null,contractor:W.contractor.trim(),
+    plan:{permit:p.permit,clsName:p.clsName,disc:p.disc,zoning:p.zoning,plans:p.plans,prior:p.prior.map(x=>x[0]),docs:p.docs.map(d=>({id:d.id,n:d.n}))},
+    docs:W.docs,status:"received",history:[{at:now,status:"received",by:"applicant"}],messages:[],notes:[]};
+  try{await Store.put(Store.uid,app);LS.set("mt-draft",null);
+    $("#done").innerHTML=`<div class="stack" style="gap:24px;max-width:640px">
+      <div class="eyebrow">Submitted</div><h2>Thanks. Your application is in.</h2>
+      <div class="row"><span class="ref">${app.ref}</span><span class="muted small">Keep this number for your records.</span></div>
+      <p class="muted">The office does a completeness check first${p.zoning==="yes"?", then sends it to Zoning (up to 10 business days)":""}, then plan review (up to 20 business days). You'll see each step under My applications, along with any questions from the reviewer.</p>
+      <div class="note small">This is a demonstration. To file officially, submit the same documents through ${ext(L.sdlLogin,"the SDL portal")} or at the counter in Town Hall.</div>
+      <div class="row"><a class="btn primary" href="#track" data-go="track">View my applications</a><button class="btn ghost" id="again">Plan another project</button></div></div>`;
+    $("#again").onclick=()=>{W=blank();renderCards();renderPeople();showStep(0)};
+    W=blank();renderCards();renderPeople();showStep(5);
+  }catch(e){$("#e4").textContent=e&&e.code==="permission_denied"?"Your access to this demo is view-only, so it can't save applications. Ask the owner for Contributor access.":"Couldn't submit just now. Your answers are saved here; try again in a moment.";$("#e4").hidden=false}
+  btn.disabled=false;
+};
+
+/* ---------- Track ---------- */
+function flow(a){const z=a.plan&&a.plan.zoning==="yes";return ["received","screening",...(z?["zoning"]:[]),"review","approved","issued","inspections","closed"]}
+function renderMine(list){
+  const el=$("#mine");
+  if(!list.length){el.innerHTML=`<div class="empty"><b>No applications yet</b><span>When you submit a project from Plan my project, it shows up here with its progress and any messages from the office.</span><a class="btn primary" href="#start" data-go="start">Plan my project</a></div>`;return}
+  list.sort((a,b)=>b.createdAt-a.createdAt);
+  el.innerHTML=list.map(a=>{const f=flow(a);const cur=a.status==="info"?f.indexOf("review"):f.indexOf(a.status);
+    const msgs=(a.messages||[]);
+    return `<article class="appcard"><div class="hd"><div class="stack" style="gap:6px"><div class="row" style="gap:10px"><span class="ref">${esc(a.ref)}</span>${statusPill(a.status)}</div><b>${esc(a.projects.map(id=>PN[id]?PN[id].n:id).join(", "))}</b><span class="muted small">${esc(a.address)} · submitted ${fmtDate(a.createdAt)}</span></div></div>
+    <div class="progress">${f.map((s,i)=>`<div class="${i<cur?"done":i===cur?"cur":""}"><div class="bar"></div>${esc(STN[s])}</div>`).join("")}</div>
+    ${a.status==="info"?`<div class="msgs"><div class="note"><b>The reviewer needs something from you.</b> See the message below, then reply by phone or email, or resubmit through SDL.</div></div>`:""}
+    ${msgs.length?`<div class="msgs">${msgs.map(m=>`<div class="msg"><div class="meta">Construction Office · ${fmtDate(m.at)}</div>${esc(m.text)}</div>`).join("")}</div>`:""}
+    </article>`}).join("");
+}
+
+/* ---------- Staff console ---------- */
+let ALL=[], sel=null, qfilter="open", qtext="", aiBusy=false;
+const FILTERS=[["open","Open"],["new","New"],["info","Waiting on applicant"],["done","Issued & closed"],["all","All"]];
+$("#qfilters").innerHTML=FILTERS.map(f=>`<button type="button" data-f="${f[0]}" aria-pressed="${f[0]===qfilter}">${f[1]}</button>`).join("");
+$("#qfilters").onclick=e=>{const b=e.target.closest("button");if(!b)return;qfilter=b.dataset.f;$$("#qfilters button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderQueue()};
+$("#qsearch").oninput=e=>{qtext=e.target.value.toLowerCase();renderQueue()};
+function filtered(){return ALL.filter(a=>{
+  if(qfilter==="open"&&["issued","inspections","closed"].includes(a.status))return false;
+  if(qfilter==="new"&&!["received","screening"].includes(a.status))return false;
+  if(qfilter==="info"&&a.status!=="info")return false;
+  if(qfilter==="done"&&!["issued","inspections","closed"].includes(a.status))return false;
+  if(qtext&&!(`${a.ref} ${a.owner.name} ${a.address}`.toLowerCase().includes(qtext)))return false;return true}).sort((a,b)=>b.createdAt-a.createdAt)}
+function bizDays(from){let d=new Date(from),n=0;const now=new Date();while(d<now){d.setDate(d.getDate()+1);const w=d.getDay();if(w&&w!==6&&d<=now)n++}return n}
+function readiness(a){const docs=(a.plan&&a.plan.docs)||[];const r=docs.filter(d=>(a.docs[d.id]||{}).ready).length;return [r,docs.length]}
+function renderQueue(){
+  const list=filtered();
+  $("#qlist").innerHTML=list.length?list.map(a=>{const [r,t]=readiness(a);const days=bizDays(a.createdAt);return `<button type="button" class="qitem" data-k="${esc(a._doc)}|${esc(a.ref)}" aria-current="${sel===a._doc+"|"+a.ref}"><span class="stripe"></span><span><span class="l1"><span>${esc(a.ref)}</span><span class="muted">${days} bd</span></span><span class="l2">${esc(a.owner.name)}</span><span class="l3">${statusPill(a.status)}<span>${esc(a.projects.map(id=>PN[id]?PN[id].n:id).join(", "))}</span><span>${r}/${t} docs</span>${a.example?'<span class="pill line">Example</span>':""}</span></span></button>`}).join(""):`<div style="padding:24px 16px" class="muted small">No applications match.</div>`;
+  renderDetail();
+}
+$("#qlist").onclick=e=>{const b=e.target.closest(".qitem");if(!b)return;sel=b.dataset.k;renderQueue()};
+function current(){return ALL.find(a=>a._doc+"|"+a.ref===sel)}
+function renderDetail(){
+  const a=current(), el=$("#qdetail");
+  if(!a){el.innerHTML=`<div class="empty"><b>${ALL.length?"Select an application":"No applications yet"}</b><span>${ALL.length?"Pick one from the queue to see its details, run an AI completeness review and update its status.":"Homeowner submissions from Plan my project land here. You can also load clearly marked example applications to try the console."}</span></div>`;return}
+  const [r,t]=readiness(a);const p=a.plan||{};const ai=a.ai;
+  const ans=Object.entries(a.answers||{}).filter(([k])=>!["ownerOcc","doer","plansBy"].includes(k)).map(([k,v])=>{const q=Q.find(x=>x.k===k);return q?`<dt>${esc(q.t)}</dt><dd>${esc(v)}</dd>`:""}).join("");
+  el.innerHTML=`
+  <div class="panel stack" style="gap:16px">
+    <div class="row" style="justify-content:space-between"><div class="row" style="gap:10px"><span class="ref">${esc(a.ref)}</span>${statusPill(a.status)}${a.example?'<span class="pill line">Example</span>':""}</div><span class="muted small mono">${bizDays(a.createdAt)} business days since intake</span></div>
+    <h3 style="font-size:1.4rem">${esc(a.projects.map(id=>PN[id]?PN[id].n:id).join(", "))}</h3>
+    <p class="muted">${esc(a.description||"No description provided.")}</p>
+    <dl class="kv">
+      <dt>Owner</dt><dd>${esc(a.owner.name)} · <span class="mono small" style="user-select:all">${esc(a.owner.email)}</span>${a.owner.phone?" · "+esc(a.owner.phone):""}</dd>
+      <dt>Property</dt><dd>${esc(a.address)}${a.blocklot?" · "+esc(a.blocklot):""}</dd>
+      <dt>Owner-occupied SFD</dt><dd>${esc(a.answers.ownerOcc)}</dd>
+      <dt>Work by</dt><dd>${esc(a.answers.doer)}${a.contractor?" ("+esc(a.contractor)+")":""}</dd>
+      <dt>Plans by</dt><dd>${esc(a.answers.plansBy)}</dd>
+      <dt>Est. cost</dt><dd class="mono">${a.cost?"$"+Number(a.cost).toLocaleString():"Not given"}</dd>
+      <dt>Portal's read</dt><dd>${esc(p.clsName)} · ${esc((p.disc||[]).map(k=>DISC[k][0]).join(", ")||"no technicals")} · zoning ${esc(p.zoning)}${p.plans?" · plans required":""}</dd>
+      ${ans}
+    </dl>
+  </div>
+  <div class="panel stack">
+    <div class="row" style="justify-content:space-between"><h3>Document checklist</h3><span class="mono small">${r} of ${t} marked ready</span></div>
+    <ul class="checklist">${(p.docs||[]).map(d=>{const s=a.docs[d.id]||{};return `<li><span class="box" aria-checked="${!!s.ready}" style="cursor:default"></span><div class="it"><b>${esc(d.n)}</b>${s.files&&s.files.length?`<div class="files">${s.files.map(esc).join(" · ")}</div>`:`<p>${s.ready?"Marked ready, no file attached":"Not provided"}</p>`}</div><span></span></li>`}).join("")}</ul>
+  </div>
+  <div class="ai">
+    <div class="aih"><div><h3>AI review assistant</h3><div class="muted small">Checks completeness, classifies the work and drafts next steps. A reviewer makes every decision.</div></div>
+    <button class="btn dark sm" id="ai-run" ${sampleNS&&!aiBusy?"":"disabled"}>${aiBusy?'<span class="spinner"></span> Reviewing':ai?"Run again":"Run review"}</button></div>
+    <div class="aib" id="ai-body">${ai?aiHTML(ai):`<p class="muted small">${sampleNS?"Run a review to get a completeness score, missing items, the likely rehab category, routing and a draft message to the applicant.":"AI review isn't available in this view."}</p>`}</div>
+  </div>
+  <div class="panel stack">
+    <h3>Update status</h3>
+    <div class="grid2">
+      <label class="f">New status<select id="st-sel">${ST.map(s=>`<option value="${s[0]}" ${s[0]===a.status?"selected":""}>${s[1]}</option>`).join("")}</select></label>
+      <label class="f">Message to applicant <span class="hint">Optional. Shown on their My applications page.</span><textarea id="st-msg" style="min-height:72px"></textarea></label>
+    </div>
+    <label class="f">Internal note <span class="hint">Staff only.</span><input type="text" id="st-note"></label>
+    <div class="row"><button class="btn primary" id="st-save">Save update</button>${a.example?'<button class="btn ghost" id="st-del">Remove example</button>':""}</div>
+    ${(a.history||[]).length?`<ul class="tl" style="margin-top:8px">${[...a.history].reverse().map(h=>`<li><span>${esc(STN[h.status]||h.status)}${h.note?` <span class="muted small">· ${esc(h.note)}</span>`:""}</span><span class="dur">${fmtDate(h.at)}</span></li>`).join("")}</ul>`:""}
+  </div>`;
+  $("#ai-run").onclick=()=>runAI(a);
+  $("#st-save").onclick=()=>saveStatus(a);
+  const del=$("#st-del");if(del)del.onclick=async()=>{await Store.remove(a._doc,a.ref).catch(()=>toast("Couldn't remove it."));sel=null;toast("Example removed")};
+  const use=$("#ai-use");if(use)use.onclick=()=>{$("#st-sel").value=ai.suggestedStatus||a.status;$("#st-msg").value=ai.messageToApplicant||"";$("#st-msg").focus()};
+}
+function aiHTML(x){
+  const sc=Math.max(0,Math.min(100,Number(x.completeness)||0));
+  return `<div class="meter"><b>${sc}</b><div class="track"><i style="width:${sc}%"></i></div><span class="muted small">completeness</span></div>
+  <p>${esc(x.summary||"")}</p>
+  <div class="grid2">
+    <div><div class="eyebrow" style="margin-bottom:8px">Classification</div><p class="small">${esc(x.rehabCategory||"")}${x.rehabCite?` <span class="mono muted">(${esc(x.rehabCite)})</span>`:""}</p><div class="disc" style="margin-top:8px">${(x.disciplines||[]).map(d=>`<span class="pill">${esc(d)}</span>`).join("")}</div></div>
+    <div><div class="eyebrow" style="margin-bottom:8px">Route to</div><p class="small"><b>${esc(x.routeTo||"")}</b></p>${(x.priorApprovals||[]).length?`<p class="small muted" style="margin-top:4px">Prior approvals: ${esc(x.priorApprovals.join(", "))}</p>`:""}</div>
+  </div>
+  ${(x.missing||[]).length?`<div><div class="eyebrow" style="margin-bottom:8px">Missing or unclear</div><ul>${x.missing.map(m=>`<li><b>${esc(m.item)}</b>${m.why?` · <span class="muted">${esc(m.why)}</span>`:""}</li>`).join("")}</ul></div>`:""}
+  ${(x.flags||[]).length?`<div><div class="eyebrow" style="margin-bottom:8px">Reviewer flags</div><ul>${x.flags.map(f=>`<li>${esc(f)}</li>`).join("")}</ul></div>`:""}
+  <div><div class="eyebrow" style="margin-bottom:8px">Recommended next step</div><p class="small">${esc(x.nextStep||"")}</p></div>
+  ${x.messageToApplicant?`<div><div class="eyebrow" style="margin-bottom:8px">Draft message to applicant</div><div class="draft">${esc(x.messageToApplicant)}</div><div class="row" style="margin-top:10px"><button class="btn sm" id="ai-use">Use suggestion${x.suggestedStatus&&STN[x.suggestedStatus]?`: ${esc(STN[x.suggestedStatus])}`:""}</button></div></div>`:""}
+  <p class="muted small mono">Reviewed ${fmtDate(x.at)}</p>`;
+}
+async function runAI(a){
+  if(!sampleNS||aiBusy)return;aiBusy=true;renderDetail();
+  const payload={ref:a.ref,projects:a.projects.map(id=>PN[id]?PN[id].n:id),description:a.description,estimatedCost:a.cost,address:a.address,
+    ownerOccupiedSingleFamily:a.answers.ownerOcc,workBy:a.answers.doer,contractor:a.contractor||null,plansBy:a.answers.plansBy,
+    scopeAnswers:Object.fromEntries(Object.entries(a.answers).filter(([k])=>Q.find(q=>q.k===k)).map(([k,v])=>[Q.find(q=>q.k===k).t,v])),
+    portalAssessment:a.plan,documents:(a.plan.docs||[]).map(d=>({item:d.n,markedReady:!!(a.docs[d.id]||{}).ready,files:(a.docs[d.id]||{}).files||[]}))};
+  const prompt=`You assist a plans examiner at the Moorestown Township, New Jersey Construction Office with intake of residential permit applications under the NJ Uniform Construction Code (N.J.A.C. 5:23). Review the application for completeness and routing. Be practical and specific; do not invent facts about the property. The examiner makes all decisions.
+
+Office reference:
+${KB}
+
+Application (JSON):
+${JSON.stringify(payload,null,1)}
+
+Reply with only a JSON object with exactly these fields:
+{"completeness": integer 0-100,
+ "summary": one or two sentences on what this application is and its overall state,
+ "rehabCategory": one of "Ordinary maintenance","Repair","Renovation","Alteration","Reconstruction","Addition / new construction",
+ "rehabCite": the N.J.A.C. citation,
+ "disciplines": array of technical sections needed from ["Building","Electrical","Plumbing","Mechanical","Fire"],
+ "priorApprovals": array of strings (e.g. "Zoning", "Floodplain administrator"), empty if none,
+ "routeTo": one of "Zoning","Plan review","Return to applicant",
+ "missing": array of {"item": short name, "why": short reason},
+ "flags": array of short strings for code or licensing concerns worth a closer look (e.g. contractor doing trade work without license info, owner-prepared plans on a non-owner-occupied home, cost that looks low for the scope, scope answers marked "Not sure"),
+ "nextStep": one sentence for the examiner,
+ "suggestedStatus": one of "screening","zoning","review","info",
+ "messageToApplicant": a short, friendly, plain-language message (under 90 words) the examiner could send, listing what's needed or what happens next. Sign it "Moorestown Construction Office".}`;
+  try{
+    const res=await sampleNS.json(prompt,{modelTier:"default"});
+    if(!res||typeof res!=="object")throw {code:"invalid_json"};
+    res.at=Date.now();
+    await Store.put(a._doc,{...a,ai:res,updatedAt:Date.now()});
+    toast("AI review saved to this application");
+  }catch(e){toast(e&&e.code==="rate_limited"?"Too many reviews at once. Try again shortly.":e&&e.code==="permission_denied"?"Review ran, but you don't have access to save it.":"The review didn't come back cleanly. Try again.")}
+  aiBusy=false;renderDetail();
+}
+async function saveStatus(a){
+  const status=$("#st-sel").value,msg=$("#st-msg").value.trim(),note=$("#st-note").value.trim(),now=Date.now();
+  if(status===a.status&&!msg&&!note){toast("Nothing to update");return}
+  const next={...a,status,updatedAt:now,history:[...(a.history||[]),{at:now,status,note,by:"staff"}],messages:msg?[...(a.messages||[]),{at:now,text:msg}]:(a.messages||[])};
+  try{await Store.put(a._doc,next);toast("Update saved")}catch(e){toast(e&&e.code==="permission_denied"?"You need editor access to update applications.":"Couldn't save the update. Try again.")}
+}
+const EXAMPLES=()=>{const d=n=>Date.now()-n*864e5;const mk=(o)=>{const p=computePlan({projects:o.projects,answers:o.answers,docs:o.docs});return {...o,uid:"examples",example:true,updatedAt:o.createdAt,
+  plan:{permit:p.permit,clsName:p.clsName,disc:p.disc,zoning:p.zoning,plans:p.plans,prior:p.prior.map(x=>x[0]),docs:p.docs.map(x=>({id:x.id,n:x.n}))},history:[{at:o.createdAt,status:"received",by:"applicant"}],messages:[],notes:[]}};
+  return [
+    mk({ref:"MT-EX-K1TC",createdAt:d(2),owner:{name:"Example Applicant A",email:"applicant-a@example.com",phone:""},address:"Example address A, Moorestown",blocklot:"",projects:["kitchen"],answers:{ownerOcc:"Yes",doer:"A contractor",plansBy:"Me",walls:"Yes",openings:"No",structural:"Not sure",plumbing:"Yes",electric:"Yes",gas:"Yes",flood:"No"},description:"Open the wall between kitchen and dining room, move sink to a new island, new gas range and hood, add under-cabinet lighting.",cost:38000,contractor:"Example Remodeling LLC",docs:{jacket:{ready:true,files:["permit-jacket.pdf"]},"tech-B":{ready:true},"tech-E":{ready:true}},status:"received"}),
+    mk({ref:"MT-EX-D4KR",createdAt:d(6),owner:{name:"Example Applicant B",email:"applicant-b@example.com",phone:""},address:"Example address B, Moorestown",blocklot:"",projects:["deck"],answers:{ownerOcc:"Yes",doer:"Me",plansBy:"Me",electric:"No",flood:"Not sure"},description:"New 14x16 pressure-treated deck off the back slider, about 30 inches above grade.",cost:9000,contractor:"",docs:{jacket:{ready:true},"tech-B":{ready:true},zoning:{ready:true},plans:{ready:true,files:["deck-plan.pdf","deck-section.pdf"]},survey:{ready:true,files:["survey-marked.pdf"]}},status:"received"}),
+    mk({ref:"MT-EX-W8HP",createdAt:d(1),owner:{name:"Example Applicant C",email:"applicant-c@example.com",phone:""},address:"Example address C, Moorestown",blocklot:"",projects:["waterheater"],answers:{ownerOcc:"No",doer:"Me",plansBy:"None needed",gas:"Yes",flood:"No"},description:"Replace 50-gallon gas water heater in the same location. Rental property.",cost:1200,contractor:"",docs:{jacket:{ready:true},"tech-P":{ready:true},"tech-M":{ready:true}},status:"received"})
+  ]};
+async function loadExamples(){try{for(const a of EXAMPLES())await Store.put("examples",a);toast("Three example applications added");}catch(e){toast(e&&e.code==="permission_denied"?"You need editor access to add examples.":"Couldn't add examples.")}}
+
+/* ---------- Boot ---------- */
+renderCards();renderPeople();showStep(0);
+go((location.hash||"#home").slice(1),false);
+(async()=>{
+  await Store.init();
+  try{sampleNS=window.claude&&claude.use?await claude.use("sample"):null}catch(e){sampleNS=null}
+  if(!sampleNS){$("#ask-sec").hidden=true}
+  $("#store-banner").innerHTML=Store.mode==="local"?`<div class="banner">Saved in this browser only. Sign in to claude.ai to keep applications with the portal.</div>`:"";
+  Store.subscribeMine(renderMine);
+  $("#staff-actions").innerHTML=`<button class="btn sm" id="ex-load">Load example applications</button>`;
+  $("#ex-load").onclick=loadExamples;
+  if(Store.mode==="db"&&!Store.canEdit){
+    $("#staff-banner").innerHTML=`<div class="banner">The staff console is for Construction Office reviewers. Ask the portal owner for editor access to see submitted applications.</div>`;
+  }else if(Store.mode==="local"){$("#staff-banner").innerHTML=`<div class="banner">Demo mode: showing applications saved in this browser.</div>`}
+  Store.subscribeAll((list,err)=>{if(list===null){ALL=[];if(mode==="staff")renderQueue();return}ALL=list;if(sel&&!current())sel=null;if(mode==="staff")renderQueue()});
+  if(mode==="staff")renderQueue();
+})();
+})();
+</script>
